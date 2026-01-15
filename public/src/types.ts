@@ -20,30 +20,17 @@ export interface Chapter {
   order: number;
 }
 
-export interface BranchPoint {
-  id: string;
-  chapterId: string; // Chapter where the branch occurs
-  name: string;
-  description?: string;
-}
 
-export interface ContinuityBranch {
-  id: string;
-  fromContinuityId: string;
-  toContinuityId: string;
-  branchPointId?: string; // Link to where it branches
-  mergePointChapterId?: string; // Where it merges back
-  description?: string;
-}
 
 export interface Continuity {
   id: string;
   name: string;
   description?: string;
   color?: string; // For timeline visualization
+  x?: number; // Timeline X position in world coordinates
+  y?: number; // Timeline Y position in world coordinates
   chapters: Chapter[];
   arcs: Arc[];
-  branches: ContinuityBranch[]; // Branches to other continuities
 }
 
 export interface Project {
@@ -73,7 +60,6 @@ export function createContinuity(name: string): Continuity {
     name,
     chapters: [],
     arcs: [],
-    branches: [],
   };
 }
 
