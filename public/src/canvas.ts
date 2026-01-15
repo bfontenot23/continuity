@@ -44,6 +44,8 @@ export class TimelineCanvas {
   private timelineDragStartY: number = 0;
   private timelineOriginalX: number = 0;
   private timelineOriginalY: number = 0;
+  private dragDelayTimer: number | null = null;
+  private pendingDragTimelineId: string | null = null;
   
   // Timelines
   private timelines: TimelinePosition[] = [];
@@ -205,6 +207,13 @@ export class TimelineCanvas {
         (this.canvas as any).lastClickY = mouseY;
 
         if (isDoubleClick) {
+          // Clear any pending drag
+          if (this.dragDelayTimer) {
+            clearTimeout(this.dragDelayTimer);
+            this.dragDelayTimer = null;
+            this.pendingDragTimelineId = null;
+          }
+          
           const clickedElement = this.getClickedTimelineOrChapter(mouseX, mouseY);
           if (clickedElement?.type === 'timeline-title' && this.onEditTimeline) {
             this.onEditTimeline(clickedElement.id);
@@ -219,11 +228,10 @@ export class TimelineCanvas {
         }
 
         // Check if clicking on draggable timeline element (title, head, or tail)
+        // Use a small delay before starting drag to allow double-click detection
         const draggableElement = this.isDraggableTimelineElement(mouseX, mouseY);
         if (draggableElement?.isDraggable) {
-          // Start timeline dragging
-          this.isDraggingTimeline = true;
-          this.draggedTimelineId = draggableElement.timelineId;
+          this.pendingDragTimelineId = draggableElement.timelineId;
           this.timelineDragStartX = mouseX;
           this.timelineDragStartY = mouseY;
           
@@ -233,7 +241,15 @@ export class TimelineCanvas {
             this.timelineOriginalY = timeline.y;
           }
           
-          this.canvas.style.cursor = 'move';
+          // Delay drag start to allow double-click detection
+          this.dragDelayTimer = window.setTimeout(() => {
+            if (this.pendingDragTimelineId) {
+              this.isDraggingTimeline = true;
+              this.draggedTimelineId = this.pendingDragTimelineId;
+              this.canvas.style.cursor = 'move';
+            }
+            this.dragDelayTimer = null;
+          }, 150);
           return;
         }
 
@@ -323,6 +339,13 @@ export class TimelineCanvas {
     });
 
     this.canvas.addEventListener('mouseup', () => {
+      // Clear any pending drag
+      if (this.dragDelayTimer) {
+        clearTimeout(this.dragDelayTimer);
+        this.dragDelayTimer = null;
+        this.pendingDragTimelineId = null;
+      }
+      
       // Save timeline position if we were dragging a timeline
       if (this.isDraggingTimeline && this.draggedTimelineId && this.onTimelineMoved) {
         const timeline = this.timelines.find(t => t.id === this.draggedTimelineId);

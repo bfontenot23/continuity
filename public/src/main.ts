@@ -119,8 +119,9 @@ function initializeApp() {
       showTimelineEditSidebar(timelineId);
     });
 
-    canvas.setOnTimelineHovered((_timelineId: string | null, _position: 'above' | 'below') => {
+    canvas.setOnTimelineHovered((timelineId: string | null, position: 'above' | 'below') => {
       // Visual feedback for hover states - can be expanded for more interactivity
+      console.log(`Hovered: ${timelineId} ${position}`);
     });
 
     canvas.setOnTimelineMoved((timelineId: string, x: number, y: number) => {
