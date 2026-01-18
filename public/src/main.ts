@@ -296,6 +296,31 @@ function initializeApp() {
     }
   }
 
+  // Global keyboard shortcuts
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    // Skip if typing in an input field (except for Enter in edit sidebar)
+    const target = e.target as HTMLElement;
+    const isInInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+    
+    // Shift + T: New Timeline
+    if (e.shiftKey && e.key === 'T' && !isInInput) {
+      e.preventDefault();
+      const state = stateManager.getState();
+      if (state.currentProject) {
+        handleAddContinuity();
+      }
+    }
+    
+    // Shift + C: Toggle Chapter Insertion Mode
+    if (e.shiftKey && e.key === 'C' && !isInInput) {
+      e.preventDefault();
+      const state = stateManager.getState();
+      if (state.currentProject && canvasInstance) {
+        canvasInstance.toggleInsertionMode();
+      }
+    }
+  });
+
   // Initial render
   renderUI();
 }

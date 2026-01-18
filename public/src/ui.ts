@@ -1182,9 +1182,6 @@ export class UIComponents {
       nameGroup.appendChild(nameInput);
 
       content.appendChild(nameGroup);
-
-      // Auto-focus the name input
-      setTimeout(() => nameInput.focus(), 0);
     } else {
       // Chapter editing
       const titleGroup = document.createElement('div');
@@ -1266,9 +1263,6 @@ export class UIComponents {
 
         content.appendChild(gridLengthGroup);
       }
-
-      // Auto-focus the title input
-      setTimeout(() => titleInput.focus(), 0);
     }
 
     sidebar.appendChild(content);
@@ -1279,7 +1273,8 @@ export class UIComponents {
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn-primary';
     saveBtn.textContent = 'Save';
-    saveBtn.addEventListener('click', () => {
+    
+    const handleSave = () => {
       if (type === 'timeline') {
         const nameInput = content.querySelector('#timeline-name-input') as HTMLInputElement;
         if (nameInput && continuity) {
@@ -1306,7 +1301,23 @@ export class UIComponents {
         }
       }
       onClose();
-    });
+    };
+    
+    saveBtn.addEventListener('click', handleSave);
+    
+    // Add Enter key handler to sidebar for save
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        // Only trigger on Enter if not in textarea (where Enter should add new line)
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          handleSave();
+        }
+      }
+    };
+    
+    sidebar.addEventListener('keydown', handleKeyDown);
 
     actions.appendChild(saveBtn);
 
@@ -1332,6 +1343,17 @@ export class UIComponents {
     actions.appendChild(deleteBtn);
 
     sidebar.appendChild(actions);
+
+    // Auto-focus the appropriate input after sidebar is added to DOM
+    setTimeout(() => {
+      if (type === 'timeline') {
+        const nameInput = sidebar.querySelector('#timeline-name-input') as HTMLInputElement;
+        if (nameInput) nameInput.focus();
+      } else {
+        const titleInput = sidebar.querySelector('#chapter-title-input') as HTMLInputElement;
+        if (titleInput) titleInput.focus();
+      }
+    }, 0);
 
     return sidebar;
   }

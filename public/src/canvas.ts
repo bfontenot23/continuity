@@ -648,6 +648,12 @@ export class TimelineCanvas {
     this.getStateChaptersForTimeline = callback;
   }
 
+  toggleInsertionMode(): void {
+    this.insertionMode = !this.insertionMode;
+    this.hoveredInsertionPoint = { timelineId: null, position: -1 };
+    this.render();
+  }
+
   /**
    * Update chapters for a timeline from state data
    * Converts Chapter model into TimelineChapter visualization
