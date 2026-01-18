@@ -10,7 +10,7 @@ export class ContinuityFileManager {
    * Export a project to a .cty file
    */
   static exportProject(project: Project, filename?: string): void {
-    const ctyFilename = filename || `${project.title.replace(/\s+/g, '-')}-${Date.now()}.cty`;
+    const ctyFilename = filename || `${project.title.replace(/\s+/g, '-')}.cty`;
     const json = JSON.stringify(project, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
