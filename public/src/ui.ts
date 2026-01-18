@@ -132,8 +132,7 @@ export class UIComponents {
       const newChapter = createChapter(
         `Chapter ${continuity.chapters.length + 1}`,
         arcId,
-        continuity.chapters.length,
-        continuity.chapters.length
+        1 // Placeholder - addChapter will set correct timestamp
       );
       stateManager.addChapter(continuity.id, newChapter);
       stateManager.selectChapter(newChapter.id);
@@ -1141,7 +1140,7 @@ export class UIComponents {
 
   static createEditSidebar(
     type: 'timeline' | 'chapter',
-    data: { id: string; name?: string; title?: string; description?: string },
+    data: { id: string; name?: string; title?: string; description?: string; gridLength?: number },
     continuity: Continuity | null,
     stateManager: AppStateManager,
     onClose: () => void
@@ -1239,6 +1238,33 @@ export class UIComponents {
 
         arcGroup.appendChild(arcSelect);
         content.appendChild(arcGroup);
+
+        // Grid Length input
+        const gridLengthGroup = document.createElement('div');
+        gridLengthGroup.className = 'form-group';
+        
+        const gridLengthLabel = document.createElement('label');
+        gridLengthLabel.textContent = 'Grid Length';
+        gridLengthGroup.appendChild(gridLengthLabel);
+
+        const gridLengthInput = document.createElement('input');
+        gridLengthInput.type = 'number';
+        gridLengthInput.min = '0';
+        gridLengthInput.step = '1';
+        gridLengthInput.value = (data.gridLength || 0).toString();
+        gridLengthInput.placeholder = '0 (auto)';
+        gridLengthInput.id = 'chapter-gridlength-input';
+        gridLengthInput.title = 'Set to 0 for automatic sizing based on title length';
+        gridLengthGroup.appendChild(gridLengthInput);
+
+        const gridLengthHint = document.createElement('small');
+        gridLengthHint.style.display = 'block';
+        gridLengthHint.style.marginTop = '4px';
+        gridLengthHint.style.color = '#666';
+        gridLengthHint.textContent = 'Set to 0 for automatic sizing';
+        gridLengthGroup.appendChild(gridLengthHint);
+
+        content.appendChild(gridLengthGroup);
       }
 
       // Auto-focus the title input
@@ -1260,8 +1286,24 @@ export class UIComponents {
           stateManager.updateContinuity(data.id, { name: nameInput.value });
         }
       } else {
-        // Chapter saving would happen here
-        // For now, just close the sidebar
+        // Chapter saving
+        if (continuity) {
+          const titleInput = content.querySelector('#chapter-title-input') as HTMLInputElement;
+          const descTextarea = content.querySelector('#chapter-desc-input') as HTMLTextAreaElement;
+          const arcSelect = content.querySelector('#chapter-arc-select') as HTMLSelectElement;
+          const gridLengthInput = content.querySelector('#chapter-gridlength-input') as HTMLInputElement;
+          
+          const updates: any = {};
+          if (titleInput) updates.title = titleInput.value;
+          if (descTextarea) updates.description = descTextarea.value;
+          if (arcSelect) updates.arcId = arcSelect.value;
+          if (gridLengthInput) {
+            const gridLengthValue = parseInt(gridLengthInput.value, 10);
+            updates.gridLength = isNaN(gridLengthValue) || gridLengthValue < 0 ? 0 : gridLengthValue;
+          }
+          
+          stateManager.updateChapter(continuity.id, data.id, updates);
+        }
       }
       onClose();
     });
@@ -1278,8 +1320,8 @@ export class UIComponents {
         () => {
           if (type === 'timeline' && continuity) {
             stateManager.removeContinuity(data.id);
-          } else {
-            // Handle chapter deletion
+          } else if (type === 'chapter' && continuity) {
+            stateManager.removeChapter(continuity.id, data.id);
           }
           onClose();
         }

@@ -15,9 +15,9 @@ export interface Chapter {
   title: string;
   description?: string;
   content?: string;
-  timestamp: number; // Timeline position (can be any numeric scale)
+  timestamp: number; // Timeline position (whole numbers only, determines visual order)
   arcId: string; // Reference to parent arc
-  order: number;
+  gridLength?: number; // Manual grid length (0 or undefined = auto-calculate from title)
 }
 
 
@@ -75,14 +75,14 @@ export function createChapter(
   title: string,
   arcId: string,
   timestamp: number,
-  order: number
+  gridLength?: number
 ): Chapter {
   return {
     id: generateId(),
     title,
     arcId,
     timestamp,
-    order,
+    gridLength: gridLength || 0,
   };
 }
 

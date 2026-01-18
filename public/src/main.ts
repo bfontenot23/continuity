@@ -54,6 +54,39 @@ function initializeApp() {
     appElement.appendChild(currentEditSidebar);
   }
 
+  function showChapterEditSidebar(chapterId: string) {
+    closeSidebar();
+    
+    const state = stateManager.getState();
+    const appElement = app;
+    if (!state.currentProject || !appElement) return;
+
+    // Find the continuity and chapter
+    let foundContinuity: any = null;
+    let foundChapter: any = null;
+
+    for (const continuity of state.currentProject.continuities) {
+      const chapter = continuity.chapters.find(ch => ch.id === chapterId);
+      if (chapter) {
+        foundContinuity = continuity;
+        foundChapter = chapter;
+        break;
+      }
+    }
+
+    if (!foundChapter || !foundContinuity) return;
+
+    currentEditSidebar = UIComponents.createEditSidebar(
+      'chapter',
+      { id: chapterId, title: foundChapter.title, description: foundChapter.description, gridLength: foundChapter.gridLength },
+      foundContinuity,
+      stateManager,
+      closeSidebar
+    );
+    
+    appElement.appendChild(currentEditSidebar);
+  }
+
   let canvasInstance: TimelineCanvas | null = null;
   let lastViewport: { offsetX: number; offsetY: number; zoom: number } | null = null;
 
@@ -104,6 +137,8 @@ function initializeApp() {
     // Add existing continuities to canvas
     currentProject.continuities.forEach((continuity) => {
       canvas.addTimeline(continuity.id, continuity.name, continuity.x, continuity.y);
+      // Sync chapters from state to canvas visualization
+      canvas.updateTimelineChapters(continuity.id, continuity.chapters);
     });
 
     // Setup canvas callbacks
@@ -119,6 +154,10 @@ function initializeApp() {
       showTimelineEditSidebar(timelineId);
     });
 
+    canvas.setOnEditChapter((chapterId: string) => {
+      showChapterEditSidebar(chapterId);
+    });
+
     canvas.setOnTimelineHovered((timelineId: string | null, position: 'above' | 'below') => {
       // Visual feedback for hover states - can be expanded for more interactivity
       console.log(`Hovered: ${timelineId} ${position}`);
@@ -127,6 +166,18 @@ function initializeApp() {
     canvas.setOnTimelineMoved((timelineId: string, x: number, y: number) => {
       // Save the new position to the state
       stateManager.updateContinuity(timelineId, { x, y });
+    });
+
+    canvas.setOnReorderChapter((timelineId: string, chapterId: string, targetIndex: number) => {
+      // targetIndex is the position in the sorted chapter array (0-based)
+      stateManager.reorderChapter(timelineId, chapterId, targetIndex);
+    });
+
+    canvas.setGetStateChaptersCallback((timelineId: string) => {
+      const state = stateManager.getState();
+      if (!state.currentProject) return [];
+      const continuity = state.currentProject.continuities.find(c => c.id === timelineId);
+      return continuity?.chapters || [];
     });
   }
 
@@ -180,7 +231,7 @@ function initializeApp() {
     showTimelineEditSidebar(continuity.id);
   }
 
-  function handleAddChapter(timelineId: string, position: number) {
+  function handleAddChapter(timelineId: string, insertionIndex: number) {
     const state = stateManager.getState();
     if (!state.currentProject) return;
 
@@ -188,18 +239,21 @@ function initializeApp() {
     if (!continuity) return;
 
     // Create chapter with default name
+    // The timestamp will be set by insertChapter based on position
     const arcId = continuity.arcs[0]?.id || 'default';
     const chapter = createChapter(
       'Chapter',
       arcId,
-      position,
-      continuity.chapters.length
+      1 // Temporary timestamp, will be reassigned by insertChapter
     );
-    stateManager.addChapter(timelineId, chapter);
+    stateManager.insertChapter(timelineId, chapter, insertionIndex);
     stateManager.selectChapter(chapter.id);
 
-    // Note: renderUI() is called via state subscription
-    // Chapter insertion should happen silently without opening menus
+    // Open the edit sidebar for the new chapter immediately (after render)
+    // We use setTimeout to allow renderUI to complete first
+    setTimeout(() => {
+      showChapterEditSidebar(chapter.id);
+    }, 0);
   }
 
   function handleExport() {
@@ -214,6 +268,10 @@ function initializeApp() {
       const project = await ContinuityFileManager.importProject(file);
       stateManager.setProject(project);
       renderUI();
+      // Center on the first timeline after import
+      if (project.continuities.length > 0 && canvasInstance) {
+        canvasInstance.centerOnTimeline(project.continuities[0].id);
+      }
     } catch (error) {
       alert(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
     }

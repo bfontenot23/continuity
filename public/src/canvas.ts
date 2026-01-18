@@ -47,6 +47,15 @@ export class TimelineCanvas {
   private dragDelayTimer: number | null = null;
   private pendingDragTimelineId: string | null = null;
   
+  // Chapter dragging
+  private isDraggingChapter: boolean = false;
+  private draggedChapterId: string | null = null;
+  private draggedChapterTimelineId: string | null = null;
+  private chapterDragStartX: number = 0;
+  private chapterOriginalX: number = 0;
+  private pendingDragChapterId: string | null = null;
+  private pendingDragChapterTimelineId: string | null = null;
+  
   // Timelines
   private timelines: TimelinePosition[] = [];
   private timelineHeight: number = 200;
@@ -77,8 +86,11 @@ export class TimelineCanvas {
   private onAddTimeline: (() => void) | null = null;
   private onAddChapter: ((timelineId: string, position: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
+  private onEditChapter: ((chapterId: string) => void) | null = null;
+  private onReorderChapter: ((timelineId: string, chapterId: string, newPosition: number) => void) | null = null;
   private onTimelineHovered: ((timelineId: string | null, position: 'above' | 'below') => void) | null = null;
   private onTimelineMoved: ((timelineId: string, x: number, y: number) => void) | null = null;
+  private getStateChaptersForTimeline: ((timelineId: string) => any[]) | null = null;
   private hoveredInsertZone: { timelineId: string | null; position: 'above' | 'below' } = { timelineId: null, position: 'below' };
 
   constructor(container: HTMLElement) {
@@ -218,10 +230,14 @@ export class TimelineCanvas {
           if (clickedElement?.type === 'timeline-title' && this.onEditTimeline) {
             this.onEditTimeline(clickedElement.id);
             return;
-          } else if (clickedElement?.type === 'chapter' && clickedElement.timelineId) {
-            // Double-click on any chapter (including head/tail) opens timeline edit
-            if (this.onEditTimeline) {
-              this.onEditTimeline(clickedElement.timelineId);
+          } else if (clickedElement?.type === 'chapter') {
+            // Double-click on a chapter opens chapter edit (unless it's head/tail)
+            const chapter = clickedElement;
+            if (chapter.title !== 'Head' && chapter.title !== 'Tail' && this.onEditChapter) {
+              this.onEditChapter(chapter.id);
+            } else if (this.onEditTimeline && chapter.timelineId) {
+              // Head/tail chapters open timeline edit
+              this.onEditTimeline(chapter.timelineId);
             }
             return;
           }
@@ -246,6 +262,28 @@ export class TimelineCanvas {
             if (this.pendingDragTimelineId) {
               this.isDraggingTimeline = true;
               this.draggedTimelineId = this.pendingDragTimelineId;
+              this.canvas.style.cursor = 'move';
+            }
+            this.dragDelayTimer = null;
+          }, 150);
+          return;
+        }
+
+        // Check if clicking on draggable chapter (regular chapters, not Head/Tail)
+        const draggableChapter = this.isDraggableChapterElement(mouseX, mouseY);
+        if (draggableChapter) {
+          // Store pending drag info
+          this.pendingDragChapterId = draggableChapter.chapterId;
+          this.pendingDragChapterTimelineId = draggableChapter.timelineId;
+          this.chapterDragStartX = mouseX;
+          this.chapterOriginalX = draggableChapter.x;
+          
+          // Delay drag start to allow double-click detection
+          this.dragDelayTimer = window.setTimeout(() => {
+            if (this.pendingDragChapterId) {
+              this.isDraggingChapter = true;
+              this.draggedChapterId = this.pendingDragChapterId;
+              this.draggedChapterTimelineId = this.pendingDragChapterTimelineId;
               this.canvas.style.cursor = 'move';
             }
             this.dragDelayTimer = null;
@@ -311,6 +349,41 @@ export class TimelineCanvas {
           
           this.render();
         }
+      } else if (this.isDraggingChapter && this.draggedChapterId && this.draggedChapterTimelineId) {
+        // Handle chapter dragging
+        const deltaX = mouseX - this.chapterDragStartX;
+        
+        const timeline = this.timelines.find(t => t.id === this.draggedChapterTimelineId);
+        if (timeline && timeline.chapters) {
+          const chapter = timeline.chapters.find(ch => ch.id === this.draggedChapterId);
+          if (chapter) {
+            // Convert screen delta to gridspace delta
+            const chapterSegmentWidth = this.gridSize * this.zoom;
+            const gridDelta = deltaX / chapterSegmentWidth;
+            
+            // Calculate new position relative to original
+            let newX = this.chapterOriginalX + gridDelta;
+            
+            // Find Head and Tail chapters to determine bounds
+            const headChapter = timeline.chapters.find(ch => ch.title === 'Head');
+            const tailChapter = timeline.chapters.find(ch => ch.title === 'Tail');
+            
+            if (headChapter && tailChapter) {
+              // Constrain between Head end and Tail start
+              const minX = headChapter.x + headChapter.width;
+              const maxX = tailChapter.x - chapter.width;
+              newX = Math.max(minX, Math.min(maxX, newX));
+            }
+            
+            // Update chapter position
+            chapter.x = newX;
+            
+            // Update insertion point hover state for visual feedback
+            this.hoveredInsertionPoint = this.getHoveredInsertionPoint(mouseX, mouseY);
+            
+            this.render();
+          }
+        }
       } else {
         // Handle insertion mode hover
         if (this.insertionMode) {
@@ -354,18 +427,45 @@ export class TimelineCanvas {
         }
       }
       
+      // Save chapter position if we were dragging a chapter
+      if (this.isDraggingChapter && this.draggedChapterId && this.draggedChapterTimelineId && this.onReorderChapter) {
+        // Use the hovered insertion point to determine where to place the chapter
+        if (this.hoveredInsertionPoint.timelineId && this.hoveredInsertionPoint.position >= 0) {
+          const timeline = this.timelines.find(t => t.id === this.hoveredInsertionPoint.timelineId);
+          if (timeline && timeline.chapters && this.hoveredInsertionPoint.position < timeline.chapters.length) {
+            // The position already accounts for Head/Tail, so we can use it directly
+            // Subtract 1 because position includes the Head chapter
+            const targetIndex = this.hoveredInsertionPoint.position - 1;
+            this.onReorderChapter(this.draggedChapterTimelineId, this.draggedChapterId, targetIndex);
+          }
+        } else {
+          // Invalid drop location - reset chapter positions by re-syncing from state
+          const state = this.getStateChaptersForTimeline?.(this.draggedChapterTimelineId);
+          if (state) {
+            this.updateTimelineChapters(this.draggedChapterTimelineId, state);
+          }
+        }
+      }
+      
       this.isDragging = false;
       this.isDraggingTimeline = false;
-      this.draggedTimelineId = null;
+      this.isDraggingChapter = false;
+      this.draggedChapterId = null;
+      this.draggedChapterTimelineId = null;
+      this.hoveredInsertionPoint = { timelineId: null, position: -1 };
       this.canvas.style.cursor = 'grab';
     });
 
     this.canvas.addEventListener('mouseleave', () => {
       this.isDragging = false;
       this.isDraggingTimeline = false;
+      this.isDraggingChapter = false;
       this.draggedTimelineId = null;
+      this.draggedChapterId = null;
+      this.draggedChapterTimelineId = null;
       this.canvas.style.cursor = 'grab';
       this.hoveredInsertZone = { timelineId: null, position: 'below' };
+      this.hoveredInsertionPoint = { timelineId: null, position: -1 };
       if (this.onTimelineHovered) {
         this.onTimelineHovered(null, 'below');
       }
@@ -528,12 +628,78 @@ export class TimelineCanvas {
     this.onEditTimeline = callback;
   }
 
+  setOnEditChapter(callback: (chapterId: string) => void): void {
+    this.onEditChapter = callback;
+  }
+
+  setOnReorderChapter(callback: (timelineId: string, chapterId: string, newPosition: number) => void): void {
+    this.onReorderChapter = callback;
+  }
+
   setOnTimelineHovered(callback: (timelineId: string | null, position: 'above' | 'below') => void): void {
     this.onTimelineHovered = callback;
   }
 
   setOnTimelineMoved(callback: (timelineId: string, x: number, y: number) => void): void {
     this.onTimelineMoved = callback;
+  }
+
+  setGetStateChaptersCallback(callback: (timelineId: string) => any[]): void {
+    this.getStateChaptersForTimeline = callback;
+  }
+
+  /**
+   * Update chapters for a timeline from state data
+   * Converts Chapter model into TimelineChapter visualization
+   */
+  updateTimelineChapters(timelineId: string, chapters: any[]): void {
+    const timeline = this.timelines.find(t => t.id === timelineId);
+    if (!timeline) return;
+
+    // Keep head and tail chapters, reconstruct middle chapters
+    const headChapter = timeline.chapters?.find(ch => ch.title === 'Head');
+    const tailChapter = timeline.chapters?.find(ch => ch.title === 'Tail');
+
+    const visualChapters: TimelineChapter[] = [];
+    
+    if (headChapter) visualChapters.push(headChapter);
+
+    // Convert state chapters to visual chapters
+    // Sort by timestamp to maintain order
+    const sortedChapters = [...chapters].sort((a, b) => a.timestamp - b.timestamp);
+    
+    let currentX = 1; // Position after head
+    sortedChapters.forEach((chapter) => {
+      // Calculate width: use manual gridLength if set (>0), otherwise auto-calculate
+      let chapterWidth: number;
+      if (chapter.gridLength && chapter.gridLength > 0) {
+        chapterWidth = chapter.gridLength;
+      } else {
+        // Auto-calculate based on title length
+        chapterWidth = Math.max(1, Math.ceil(chapter.title.length / 6));
+      }
+      
+      const visualChapter: TimelineChapter = {
+        id: chapter.id,
+        title: chapter.title,
+        x: currentX,
+        width: chapterWidth
+      };
+      visualChapters.push(visualChapter);
+      currentX += chapterWidth;
+    });
+
+    if (tailChapter) {
+      // Update tail position to be after all chapters
+      const lastChapterEnd = visualChapters.length > 0 
+        ? visualChapters[visualChapters.length - 1].x + visualChapters[visualChapters.length - 1].width
+        : 2;
+      tailChapter.x = lastChapterEnd;
+      visualChapters.push(tailChapter);
+    }
+
+    timeline.chapters = visualChapters;
+    this.render();
   }
 
   private render(): void {
@@ -607,72 +773,71 @@ export class TimelineCanvas {
     this.timelines.forEach(timeline => {
       const screenX = timeline.x * this.zoom + this.offsetX;
       const screenY = timeline.y * this.zoom + this.offsetY;
-      const screenWidth = timeline.width * this.zoom;
       const chapterSegmentWidth = this.gridSize * this.zoom; // One gridspace per chapter
+      
+      // Calculate line end position based on last chapter
+      let lineEndX = screenX + (timeline.width * this.zoom);
+      if (timeline.chapters && timeline.chapters.length > 0) {
+        const lastChapter = timeline.chapters[timeline.chapters.length - 1];
+        lineEndX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth) + 20; // 20px gap before arrow
+      }
 
-      // Draw horizontal timeline line
+      // Draw horizontal timeline line through all chapters
       this.ctx.strokeStyle = '#333333';
       this.ctx.lineWidth = 3;
       this.ctx.beginPath();
       this.ctx.moveTo(screenX, screenY);
-      this.ctx.lineTo(screenX + screenWidth, screenY);
+      this.ctx.lineTo(lineEndX, screenY);
       this.ctx.stroke();
 
-      // Draw chapters/segments
+      // Draw chapters/segments as extensions of the timeline
       if (timeline.chapters) {
         timeline.chapters.forEach(chapter => {
-          // Skip drawing boxes for Head and Tail chapters
+          // Skip drawing for Head and Tail chapters
           if (chapter.title === 'Head' || chapter.title === 'Tail') {
             return;
           }
           
           const chapterScreenX = screenX + (chapter.x * chapterSegmentWidth);
           const chapterScreenWidth = chapter.width * chapterSegmentWidth;
-          const chapterHeight = 30;
-          const chapterScreenY = screenY - chapterHeight;
-
-          // Draw chapter segment background
-          this.ctx.fillStyle = '#f0f0f0';
-          this.ctx.fillRect(chapterScreenX, chapterScreenY, chapterScreenWidth, chapterHeight);
-
-          // Draw chapter segment border
-          this.ctx.strokeStyle = '#999999';
-          this.ctx.lineWidth = 1;
-          this.ctx.strokeRect(chapterScreenX, chapterScreenY, chapterScreenWidth, chapterHeight);
-
-          // Draw segment divider lines
-          this.ctx.strokeStyle = '#cccccc';
-          this.ctx.lineWidth = 1;
-          for (let i = 1; i < chapter.width; i++) {
-            const dividerX = chapterScreenX + (i * chapterSegmentWidth);
-            this.ctx.beginPath();
-            this.ctx.moveTo(dividerX, chapterScreenY);
-            this.ctx.lineTo(dividerX, chapterScreenY + chapterHeight);
-            this.ctx.stroke();
-          }
-
-          // Draw chapter title (skip for Head and Tail)
-          if (chapter.title !== 'Head' && chapter.title !== 'Tail') {
-            this.ctx.fillStyle = '#333333';
-            this.ctx.font = '12px sans-serif';
-            this.ctx.textBaseline = 'middle';
-            this.ctx.textAlign = 'center';
-            
-            // Truncate text if too long
-            const maxTextWidth = chapterScreenWidth - 4;
-            const textX = chapterScreenX + chapterScreenWidth / 2;
-            const textY = chapterScreenY + chapterHeight / 2;
-            
-            let displayText = chapter.title;
-            const metrics = this.ctx.measureText(displayText);
-            if (metrics.width > maxTextWidth) {
-              while (displayText.length > 0 && this.ctx.measureText(displayText + '...').width > maxTextWidth) {
-                displayText = displayText.slice(0, -1);
-              }
-              displayText += '...';
+          const tickHeight = 8;
+          
+          // Draw tick marks at chapter start and end
+          this.ctx.strokeStyle = '#333333';
+          this.ctx.lineWidth = 2;
+          
+          // Start tick
+          this.ctx.beginPath();
+          this.ctx.moveTo(chapterScreenX, screenY - tickHeight);
+          this.ctx.lineTo(chapterScreenX, screenY + tickHeight);
+          this.ctx.stroke();
+          
+          // End tick
+          this.ctx.beginPath();
+          this.ctx.moveTo(chapterScreenX + chapterScreenWidth, screenY - tickHeight);
+          this.ctx.lineTo(chapterScreenX + chapterScreenWidth, screenY + tickHeight);
+          this.ctx.stroke();
+          
+          // Draw chapter title above the timeline
+          this.ctx.fillStyle = '#333333';
+          this.ctx.font = '12px sans-serif';
+          this.ctx.textBaseline = 'bottom';
+          this.ctx.textAlign = 'center';
+          
+          // Truncate text if too long
+          const maxTextWidth = chapterScreenWidth - 4;
+          const textX = chapterScreenX + chapterScreenWidth / 2;
+          const textY = screenY - tickHeight - 4;
+          
+          let displayText = chapter.title;
+          const metrics = this.ctx.measureText(displayText);
+          if (metrics.width > maxTextWidth) {
+            while (displayText.length > 0 && this.ctx.measureText(displayText + '...').width > maxTextWidth) {
+              displayText = displayText.slice(0, -1);
             }
-            this.ctx.fillText(displayText, textX, textY);
+            displayText += '...';
           }
+          this.ctx.fillText(displayText, textX, textY);
         });
       }
 
@@ -718,30 +883,64 @@ export class TimelineCanvas {
     });
 
     // Draw insertion mode indicators
-    if (this.insertionMode) {
+    if (this.insertionMode || this.isDraggingChapter) {
       this.drawInsertionIndicators();
     }
   }
 
   private drawInsertionIndicators(): void {
     this.timelines.forEach((timeline) => {
+      // When dragging a chapter, only show indicators on the chapter's timeline
+      if (this.isDraggingChapter && timeline.id !== this.draggedChapterTimelineId) {
+        return;
+      }
+      
       const screenX = timeline.x * this.zoom + this.offsetX;
       const screenY = timeline.y * this.zoom + this.offsetY;
       const chapterSegmentWidth = this.gridSize * this.zoom;
       
       if (timeline.chapters && timeline.chapters.length > 0) {
-        // Only show insertion point between head and tail
-        const headChapter = timeline.chapters[0];
-        const insertionX = screenX + ((headChapter.x + headChapter.width) * chapterSegmentWidth);
-        
-        const isHovered = this.hoveredInsertionPoint.timelineId === timeline.id &&
-                         this.hoveredInsertionPoint.position === 1;
-        
-        // Always use green for all timelines
-        this.ctx.fillStyle = isHovered ? '#00dd00' : 'rgba(0, 200, 0, 0.6)';
-        this.ctx.beginPath();
-        this.ctx.arc(insertionX, screenY, 10, 0, Math.PI * 2);
-        this.ctx.fill();
+        // Show insertion points between chapters, but NOT after the tail
+        // Loop through all chapters except the tail (last chapter)
+        const numInsertionPoints = timeline.chapters.length - 1;
+        for (let i = 0; i < numInsertionPoints; i++) {
+          const chapter = timeline.chapters[i];
+          
+          // Skip drawing indicator if this is the dragged chapter or the one after it
+          if (this.isDraggingChapter && timeline.id === this.draggedChapterTimelineId) {
+            const draggedChapterIndex = timeline.chapters.findIndex(ch => ch.id === this.draggedChapterId);
+            // Don't show indicators immediately before or after the dragged chapter
+            if (i === draggedChapterIndex || i === draggedChapterIndex - 1) {
+              continue;
+            }
+          }
+          
+          const insertionX = screenX + ((chapter.x + chapter.width) * chapterSegmentWidth);
+          
+          const isHovered = this.hoveredInsertionPoint.timelineId === timeline.id &&
+                           this.hoveredInsertionPoint.position === i + 1;
+          
+          // When dragging: red by default, green when hovered
+          // When in insertion mode: green always (current behavior)
+          const isDragging = this.isDraggingChapter;
+          if (isDragging) {
+            this.ctx.fillStyle = isHovered ? '#00dd00' : 'rgba(220, 0, 0, 0.6)';
+            this.ctx.strokeStyle = isHovered ? '#00aa00' : 'rgba(180, 0, 0, 0.8)';
+          } else {
+            this.ctx.fillStyle = isHovered ? '#00dd00' : 'rgba(0, 200, 0, 0.6)';
+            this.ctx.strokeStyle = isHovered ? '#00aa00' : 'rgba(0, 150, 0, 0.8)';
+          }
+          
+          this.ctx.beginPath();
+          this.ctx.arc(insertionX, screenY, 8, 0, Math.PI * 2);
+          this.ctx.fill();
+          
+          // Draw outline for better visibility
+          this.ctx.lineWidth = 2;
+          this.ctx.beginPath();
+          this.ctx.arc(insertionX, screenY, 8, 0, Math.PI * 2);
+          this.ctx.stroke();
+        }
       }
     });
   }
@@ -755,13 +954,28 @@ export class TimelineCanvas {
       const chapterSegmentWidth = this.gridSize * this.zoom;
 
       if (timeline.chapters && timeline.chapters.length > 0) {
-        // Only insertion point is between head and tail (position 1)
-        const headChapter = timeline.chapters[0];
-        const insertionX = screenX + ((headChapter.x + headChapter.width) * chapterSegmentWidth);
-        
-        const distance = Math.sqrt(Math.pow(mouseX - insertionX, 2) + Math.pow(mouseY - screenY, 2));
-        if (distance < hitRadius) {
-          return { timelineId: timeline.id, position: 1 };
+        // Check all insertion points (between chapters), but NOT after the tail
+        // Loop through all chapters except the tail (last chapter)
+        const numInsertionPoints = timeline.chapters.length - 1;
+        for (let i = 0; i < numInsertionPoints; i++) {
+          const chapter = timeline.chapters[i];
+          
+          // Skip checking insertion point if this is the dragged chapter
+          // (its position has been modified and would give wrong insertionX)
+          if (this.isDraggingChapter && timeline.id === this.draggedChapterTimelineId) {
+            const draggedChapterIndex = timeline.chapters.findIndex(ch => ch.id === this.draggedChapterId);
+            if (i === draggedChapterIndex || i === draggedChapterIndex - 1) {
+              continue;
+            }
+          }
+          
+          const insertionX = screenX + ((chapter.x + chapter.width) * chapterSegmentWidth);
+          
+          const distance = Math.sqrt(Math.pow(mouseX - insertionX, 2) + Math.pow(mouseY - screenY, 2));
+          if (distance < hitRadius) {
+            // Return the chapter index where new chapter should be inserted (after current chapter)
+            return { timelineId: timeline.id, position: i + 1 };
+          }
         }
       }
     }
@@ -772,12 +986,16 @@ export class TimelineCanvas {
   private getClickedInsertionPoint(mouseX: number, mouseY: number): { timelineId: string; position: number } | null {
     const result = this.getHoveredInsertionPoint(mouseX, mouseY);
     if (result.timelineId !== null && result.position >= 0) {
-      return { timelineId: result.timelineId, position: result.position };
+      // getHoveredInsertionPoint returns the position in the visual array (1-based, accounting for Head)
+      // We need to convert this to a 0-based index for insertion
+      // Position 1 means "after Head", which is index 0 in the real chapters array
+      const insertionIndex = result.position - 1;
+      return { timelineId: result.timelineId, position: insertionIndex };
     }
     return null;
   }
 
-  private getClickedTimelineOrChapter(mouseX: number, mouseY: number): { type: string; id: string; timelineId?: string } | null {
+  private getClickedTimelineOrChapter(mouseX: number, mouseY: number): { type: string; id: string; timelineId?: string; title?: string } | null {
     const chapterSegmentWidth = this.gridSize * this.zoom;
     const chapterHeight = 30;
 
@@ -809,7 +1027,7 @@ export class TimelineCanvas {
 
           if (mouseX > chapterScreenX && mouseX < chapterScreenX + chapterScreenWidth &&
               mouseY > chapterScreenY && mouseY < chapterScreenY + chapterHeight) {
-            return { type: 'chapter', id: chapter.id, timelineId: timeline.id };
+            return { type: 'chapter', id: chapter.id, timelineId: timeline.id, title: chapter.title };
           }
         }
       }
@@ -856,6 +1074,54 @@ export class TimelineCanvas {
           if (mouseX > chapterScreenX && mouseX < chapterScreenX + chapterScreenWidth &&
               mouseY > chapterScreenY && mouseY < chapterScreenY + chapterHeight) {
             return { timelineId: timeline.id, isDraggable: true };
+          }
+        }
+        
+        // Check timeline line area (below chapter text but within the timeline region)
+        // This allows dragging the timeline by clicking on the timeline itself under chapters
+        const lineStartX = screenX;
+        let lineEndX = screenX + (timeline.width * this.zoom);
+        if (timeline.chapters.length > 0) {
+          const lastChapter = timeline.chapters[timeline.chapters.length - 1];
+          lineEndX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth) + 20;
+        }
+        
+        const lineHitArea = 15; // Vertical hit area around the timeline line
+        if (mouseX > lineStartX && mouseX < lineEndX &&
+            mouseY > screenY - lineHitArea && mouseY < screenY + lineHitArea) {
+          return { timelineId: timeline.id, isDraggable: true };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private isDraggableChapterElement(mouseX: number, mouseY: number): { timelineId: string; chapterId: string; x: number } | null {
+    const chapterSegmentWidth = this.gridSize * this.zoom;
+    const chapterHeight = 30;
+    const tickHeight = 8;
+
+    for (const timeline of this.timelines) {
+      const screenX = timeline.x * this.zoom + this.offsetX;
+      const screenY = timeline.y * this.zoom + this.offsetY;
+
+      if (timeline.chapters) {
+        // Skip Head and Tail chapters - only allow dragging regular chapters
+        for (const chapter of timeline.chapters) {
+          if (chapter.title === 'Head' || chapter.title === 'Tail') continue;
+
+          const chapterScreenX = screenX + (chapter.x * chapterSegmentWidth);
+          const chapterScreenWidth = chapter.width * chapterSegmentWidth;
+          const chapterScreenY = screenY - chapterHeight;
+          
+          // Only detect clicks on the text area (upper portion), not the timeline area below
+          // This allows clicks on the timeline itself to trigger timeline dragging
+          const textAreaBottom = screenY - tickHeight;
+
+          if (mouseX > chapterScreenX && mouseX < chapterScreenX + chapterScreenWidth &&
+              mouseY > chapterScreenY && mouseY < textAreaBottom) {
+            return { timelineId: timeline.id, chapterId: chapter.id, x: chapter.x };
           }
         }
       }
