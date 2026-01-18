@@ -11,6 +11,7 @@ export interface AppState {
   currentProject: Project | null;
   selectedContinuityId: string | null;
   selectedChapterId: string | null;
+  arcMode: boolean;
 }
 
 export class AppStateManager {
@@ -22,6 +23,7 @@ export class AppStateManager {
       currentProject: null,
       selectedContinuityId: null,
       selectedChapterId: null,
+      arcMode: false,
     };
   }
 
@@ -243,12 +245,131 @@ export class AppStateManager {
     }
   }
 
+  reorderArc(continuityId: string, arcId: string, targetIndex: number): void {
+    if (this.state.currentProject) {
+      const continuity = this.state.currentProject.continuities.find(c => c.id === continuityId);
+      if (continuity) {
+        const arc = continuity.arcs.find(a => a.id === arcId);
+        if (!arc) return;
+
+        // Sort all chapters by timestamp to get current order
+        const sortedChapters = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
+        
+        // Build arc groups in current chapter order (treating each unassigned chapter individually)
+        const arcGroups: { arcId: string | null; chapters: typeof sortedChapters }[] = [];
+        let currentArcId: string | null = null;
+        let currentGroup: typeof sortedChapters = [];
+        
+        sortedChapters.forEach(chapter => {
+          if (chapter.title === 'Head' || chapter.title === 'Tail') {
+            // Head and Tail stay in place, but break groups
+            if (currentGroup.length > 0) {
+              arcGroups.push({ arcId: currentArcId, chapters: currentGroup });
+            }
+            currentArcId = null;
+            currentGroup = [];
+            return;
+          }
+          
+          // Each unassigned chapter is its own unique group
+          const chapterArcId = chapter.arcId || `unassigned-${chapter.id}`;
+          
+          if (chapterArcId !== currentArcId) {
+            // New group
+            if (currentGroup.length > 0) {
+              arcGroups.push({ arcId: currentArcId, chapters: currentGroup });
+            }
+            currentArcId = chapterArcId;
+            currentGroup = [chapter];
+          } else {
+            // Same arc - add to current group
+            currentGroup.push(chapter);
+          }
+        });
+        
+        if (currentGroup.length > 0) {
+          arcGroups.push({ arcId: currentArcId, chapters: currentGroup });
+        }
+        
+        // Find the group being dragged
+        const draggedGroupIndex = arcGroups.findIndex(g => g.arcId === arcId);
+        if (draggedGroupIndex === -1) return;
+        
+        const draggedGroup = arcGroups[draggedGroupIndex];
+        
+        // Remove the dragged group
+        arcGroups.splice(draggedGroupIndex, 1);
+        
+        // The targetIndex is the position in the arc groups array (including unassigned)
+        // Adjust if we removed an item before the target position
+        let insertIndex = targetIndex;
+        if (draggedGroupIndex < targetIndex) {
+          insertIndex = targetIndex - 1;
+        }
+        
+        // Ensure insertIndex is within bounds
+        insertIndex = Math.max(0, Math.min(insertIndex, arcGroups.length));
+        
+        // Insert the dragged group at the new position
+        arcGroups.splice(insertIndex, 0, draggedGroup);
+        
+        // Rebuild the chapter list from arc groups
+        const reorderedChapters: typeof sortedChapters = [];
+        const headChapter = continuity.chapters.find(ch => ch.title === 'Head');
+        const tailChapter = continuity.chapters.find(ch => ch.title === 'Tail');
+        
+        if (headChapter) reorderedChapters.push(headChapter);
+        
+        arcGroups.forEach(group => {
+          reorderedChapters.push(...group.chapters);
+        });
+        
+        if (tailChapter) reorderedChapters.push(tailChapter);
+        
+        // Reassign timestamps as whole numbers
+        reorderedChapters.forEach((ch, index) => {
+          ch.timestamp = index + 1;
+        });
+
+        // Update arc order values based on the new chapter positions
+        // Collect arcs in the order they appear in the reordered groups
+        const orderedArcIds: string[] = [];
+        arcGroups.forEach(group => {
+          if (group.arcId && !group.arcId.startsWith('unassigned-') && !orderedArcIds.includes(group.arcId)) {
+            orderedArcIds.push(group.arcId);
+          }
+        });
+        
+        // Reassign order values to arcs
+        orderedArcIds.forEach((arcId, index) => {
+          const arc = continuity.arcs.find(a => a.id === arcId);
+          if (arc) {
+            arc.order = index;
+          }
+        });
+
+        this.state.currentProject.modified = Date.now();
+        this.notifyListeners();
+      }
+    }
+  }
+
   updateProject(updates: Partial<Project>): void {
     if (this.state.currentProject) {
       Object.assign(this.state.currentProject, updates);
       this.state.currentProject.modified = Date.now();
       this.notifyListeners();
     }
+  }
+
+  toggleArcMode(): void {
+    this.state.arcMode = !this.state.arcMode;
+    this.notifyListeners();
+  }
+
+  setArcMode(enabled: boolean): void {
+    this.state.arcMode = enabled;
+    this.notifyListeners();
   }
 
   subscribe(listener: StateChangeListener): () => void {

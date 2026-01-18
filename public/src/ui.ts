@@ -2,7 +2,7 @@
  * UI component builders for the application
  */
 
-import { Project, Continuity, createArc, createChapter } from './types';
+import { Project, Continuity, createArc, createChapter, Arc } from './types';
 import { AppStateManager } from './state';
 
 export class UIComponents {
@@ -128,10 +128,9 @@ export class UIComponents {
     `;
 
     header.querySelector('#add-chapter-btn')?.addEventListener('click', () => {
-      const arcId = continuity.arcs[0]?.id || 'default';
       const newChapter = createChapter(
         `Chapter ${continuity.chapters.length + 1}`,
-        arcId,
+        undefined,
         1 // Placeholder - addChapter will set correct timestamp
       );
       stateManager.addChapter(continuity.id, newChapter);
@@ -384,6 +383,141 @@ export class UIComponents {
       if (projectName) {
         closeModal();
         onSubmit(projectName);
+      }
+    });
+
+    cancelBtn.addEventListener('click', closeModal);
+
+    // Close on escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+
+    // Close on overlay click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    });
+
+    return modal;
+  }
+
+  static createArcEditModal(arc: Arc, continuity: Continuity, stateManager: AppStateManager, onUpdate: () => void): HTMLElement {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Edit Arc</h2>
+        </div>
+        <form id="arc-form" class="modal-form">
+          <div class="form-group">
+            <label for="arc-name">Arc Name</label>
+            <input 
+              type="text" 
+              id="arc-name" 
+              name="arc-name" 
+              placeholder="Enter arc name..." 
+              value="${arc.name}"
+              required
+              autofocus
+            />
+          </div>
+          <div class="form-group">
+            <label for="arc-color">Arc Color</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input 
+                type="color" 
+                id="arc-color-picker" 
+                value="${arc.color}"
+                style="width: 60px; height: 40px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;"
+              />
+              <input 
+                type="text" 
+                id="arc-color-text" 
+                name="arc-color" 
+                placeholder="#000000 or rgb(0,0,0)" 
+                value="${arc.color}"
+                style="flex: 1;"
+              />
+            </div>
+            <small style="display: block; margin-top: 4px; color: #666;">
+              Enter a hex color (#RRGGBB) or RGB (rgb(r,g,b))
+            </small>
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="modal-cancel" class="btn btn-secondary">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    const form = modal.querySelector('#arc-form') as HTMLFormElement;
+    const nameInput = modal.querySelector('#arc-name') as HTMLInputElement;
+    const colorPicker = modal.querySelector('#arc-color-picker') as HTMLInputElement;
+    const colorText = modal.querySelector('#arc-color-text') as HTMLInputElement;
+    const cancelBtn = modal.querySelector('#modal-cancel') as HTMLButtonElement;
+
+    // Sync color picker and text input
+    colorPicker.addEventListener('input', () => {
+      colorText.value = colorPicker.value;
+    });
+
+    colorText.addEventListener('input', () => {
+      let color = colorText.value.trim();
+      // Try to parse and normalize the color
+      if (color.startsWith('#') && (color.length === 7 || color.length === 4)) {
+        colorPicker.value = color;
+      } else if (color.startsWith('rgb')) {
+        // Parse rgb(r, g, b) format
+        const match = color.match(/rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/);
+        if (match) {
+          const r = parseInt(match[1]).toString(16).padStart(2, '0');
+          const g = parseInt(match[2]).toString(16).padStart(2, '0');
+          const b = parseInt(match[3]).toString(16).padStart(2, '0');
+          const hex = `#${r}${g}${b}`;
+          colorPicker.value = hex;
+        }
+      }
+    });
+
+    const closeModal = () => {
+      modal.remove();
+    };
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const arcName = nameInput.value.trim();
+      let arcColor = colorText.value.trim();
+      
+      // Validate and normalize color
+      if (arcColor.startsWith('rgb')) {
+        const match = arcColor.match(/rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/);
+        if (match) {
+          const r = parseInt(match[1]).toString(16).padStart(2, '0');
+          const g = parseInt(match[2]).toString(16).padStart(2, '0');
+          const b = parseInt(match[3]).toString(16).padStart(2, '0');
+          arcColor = `#${r}${g}${b}`;
+        }
+      }
+      
+      if (arcName && arcColor.match(/^#[0-9A-Fa-f]{6}$/)) {
+        stateManager.updateArc(continuity.id, arc.id, {
+          name: arcName,
+          color: arcColor
+        });
+        closeModal();
+        onUpdate();
+      } else {
+        alert('Please enter a valid arc name and color (hex format #RRGGBB)');
       }
     });
 
@@ -1140,10 +1274,11 @@ export class UIComponents {
 
   static createEditSidebar(
     type: 'timeline' | 'chapter',
-    data: { id: string; name?: string; title?: string; description?: string; gridLength?: number },
+    data: { id: string; name?: string; title?: string; description?: string; gridLength?: number; arcId?: string },
     continuity: Continuity | null,
     stateManager: AppStateManager,
-    onClose: () => void
+    onClose: () => void,
+    autoFocus: boolean = false
   ): HTMLElement {
     const sidebar = document.createElement('div');
     sidebar.className = 'edit-sidebar';
@@ -1182,6 +1317,127 @@ export class UIComponents {
       nameGroup.appendChild(nameInput);
 
       content.appendChild(nameGroup);
+
+      // Autosave on blur
+      nameInput.addEventListener('blur', () => {
+        if (continuity) {
+          stateManager.updateContinuity(data.id, { name: nameInput.value });
+        }
+      });
+
+      // Arc Management Section
+      if (continuity) {
+        const arcSectionHeader = document.createElement('h4');
+        arcSectionHeader.textContent = 'Arcs';
+        arcSectionHeader.style.marginTop = '20px';
+        arcSectionHeader.style.marginBottom = '10px';
+        content.appendChild(arcSectionHeader);
+
+        const arcsList = document.createElement('div');
+        arcsList.className = 'arcs-list';
+        arcsList.id = 'arcs-list';
+
+        const renderArcsList = () => {
+          arcsList.innerHTML = '';
+          
+          if (continuity.arcs.length === 0) {
+            const emptyMsg = document.createElement('p');
+            emptyMsg.style.color = '#666';
+            emptyMsg.style.fontSize = '14px';
+            arcsList.appendChild(emptyMsg);
+            emptyMsg.textContent = 'No arcs yet. Add one below.';
+          } else {
+            continuity.arcs.forEach(arc => {
+              const arcItem = document.createElement('div');
+              arcItem.className = 'arc-item';
+              arcItem.style.display = 'flex';
+              arcItem.style.alignItems = 'center';
+              arcItem.style.gap = '8px';
+              arcItem.style.marginBottom = '8px';
+              arcItem.style.padding = '8px';
+              arcItem.style.borderRadius = '4px';
+              arcItem.style.backgroundColor = '#f5f5f5';
+
+              const colorPreview = document.createElement('div');
+              colorPreview.style.width = '24px';
+              colorPreview.style.height = '24px';
+              colorPreview.style.borderRadius = '4px';
+              colorPreview.style.backgroundColor = arc.color;
+              colorPreview.style.border = '1px solid #ccc';
+              arcItem.appendChild(colorPreview);
+
+              const arcName = document.createElement('span');
+              arcName.style.flex = '1';
+              arcName.textContent = arc.name;
+              arcItem.appendChild(arcName);
+
+              const editBtn = document.createElement('button');
+              editBtn.className = 'btn btn-small';
+              editBtn.textContent = 'Edit';
+              editBtn.style.padding = '4px 8px';
+              editBtn.style.fontSize = '12px';
+              editBtn.type = 'button';
+              editBtn.addEventListener('click', () => {
+                const modal = UIComponents.createArcEditModal(arc, continuity, stateManager, () => {
+                  renderArcsList();
+                });
+                document.body.appendChild(modal);
+              });
+              arcItem.appendChild(editBtn);
+
+              const deleteBtn = document.createElement('button');
+              deleteBtn.className = 'btn btn-danger btn-small';
+              deleteBtn.textContent = 'Delete';
+              deleteBtn.style.padding = '4px 8px';
+              deleteBtn.style.fontSize = '12px';
+              deleteBtn.type = 'button';
+              deleteBtn.addEventListener('click', () => {
+                const confirmModal = UIComponents.createConfirmModal(
+                  'Delete arc?',
+                  `Are you sure you want to delete "${arc.name}"? Chapters in this arc will be moved to the first remaining arc.`,
+                  () => {
+                    stateManager.removeArc(continuity.id, arc.id);
+                    renderArcsList();
+                  }
+                );
+                document.body.appendChild(confirmModal);
+              });
+              arcItem.appendChild(deleteBtn);
+
+              arcsList.appendChild(arcItem);
+            });
+          }
+        };
+
+        renderArcsList();
+        content.appendChild(arcsList);
+
+        const addArcBtn = document.createElement('button');
+        addArcBtn.textContent = 'Add Arc';
+        addArcBtn.type = 'button';
+        addArcBtn.style.marginTop = '10px';
+        addArcBtn.style.width = '100%';
+        addArcBtn.style.padding = '0.5rem 1rem';
+        addArcBtn.style.border = 'none';
+        addArcBtn.style.borderRadius = '6px';
+        addArcBtn.style.background = '#667eea';
+        addArcBtn.style.color = 'white';
+        addArcBtn.style.cursor = 'pointer';
+        addArcBtn.style.fontWeight = '600';
+        addArcBtn.style.fontSize = '0.9rem';
+        addArcBtn.addEventListener('mouseover', () => {
+          addArcBtn.style.background = '#5568d3';
+        });
+        addArcBtn.addEventListener('mouseout', () => {
+          addArcBtn.style.background = '#667eea';
+        });
+        addArcBtn.addEventListener('click', () => {
+          const newArc = createArc(`Arc ${continuity.arcs.length + 1}`, continuity.arcs.length);
+          stateManager.addArc(continuity.id, newArc);
+          renderArcsList();
+        });
+        content.appendChild(addArcBtn);
+      }
     } else {
       // Chapter editing
       const titleGroup = document.createElement('div');
@@ -1200,6 +1456,13 @@ export class UIComponents {
 
       content.appendChild(titleGroup);
 
+      // Autosave on blur
+      titleInput.addEventListener('blur', () => {
+        if (continuity) {
+          stateManager.updateChapter(continuity.id, data.id, { title: titleInput.value });
+        }
+      });
+
       const descGroup = document.createElement('div');
       descGroup.className = 'form-group';
       
@@ -1215,6 +1478,13 @@ export class UIComponents {
 
       content.appendChild(descGroup);
 
+      // Autosave on blur
+      descTextarea.addEventListener('blur', () => {
+        if (continuity) {
+          stateManager.updateChapter(continuity.id, data.id, { description: descTextarea.value });
+        }
+      });
+
       if (continuity) {
         const arcGroup = document.createElement('div');
         arcGroup.className = 'form-group';
@@ -1226,15 +1496,32 @@ export class UIComponents {
         const arcSelect = document.createElement('select');
         arcSelect.id = 'chapter-arc-select';
         
+        // Add "No Arc" option
+        const noArcOption = document.createElement('option');
+        noArcOption.value = '';
+        noArcOption.textContent = 'No Arc';
+        if (!data.arcId) {
+          noArcOption.selected = true;
+        }
+        arcSelect.appendChild(noArcOption);
+        
         continuity.arcs.forEach(arc => {
           const option = document.createElement('option');
           option.value = arc.id;
           option.textContent = arc.name;
+          if (arc.id === data.arcId) {
+            option.selected = true;
+          }
           arcSelect.appendChild(option);
         });
 
         arcGroup.appendChild(arcSelect);
         content.appendChild(arcGroup);
+
+        // Autosave on change
+        arcSelect.addEventListener('change', () => {
+          stateManager.updateChapter(continuity.id, data.id, { arcId: arcSelect.value || undefined });
+        });
 
         // Grid Length input
         const gridLengthGroup = document.createElement('div');
@@ -1262,6 +1549,13 @@ export class UIComponents {
         gridLengthGroup.appendChild(gridLengthHint);
 
         content.appendChild(gridLengthGroup);
+
+        // Autosave on blur
+        gridLengthInput.addEventListener('blur', () => {
+          const gridLengthValue = parseInt(gridLengthInput.value, 10);
+          const finalValue = isNaN(gridLengthValue) || gridLengthValue < 0 ? 0 : gridLengthValue;
+          stateManager.updateChapter(continuity.id, data.id, { gridLength: finalValue });
+        });
       }
     }
 
@@ -1291,7 +1585,7 @@ export class UIComponents {
           const updates: any = {};
           if (titleInput) updates.title = titleInput.value;
           if (descTextarea) updates.description = descTextarea.value;
-          if (arcSelect) updates.arcId = arcSelect.value;
+          if (arcSelect) updates.arcId = arcSelect.value || undefined;
           if (gridLengthInput) {
             const gridLengthValue = parseInt(gridLengthInput.value, 10);
             updates.gridLength = isNaN(gridLengthValue) || gridLengthValue < 0 ? 0 : gridLengthValue;
@@ -1344,16 +1638,18 @@ export class UIComponents {
 
     sidebar.appendChild(actions);
 
-    // Auto-focus the appropriate input after sidebar is added to DOM
-    setTimeout(() => {
-      if (type === 'timeline') {
-        const nameInput = sidebar.querySelector('#timeline-name-input') as HTMLInputElement;
-        if (nameInput) nameInput.focus();
-      } else {
-        const titleInput = sidebar.querySelector('#chapter-title-input') as HTMLInputElement;
-        if (titleInput) titleInput.focus();
-      }
-    }, 0);
+    // Auto-focus the appropriate input only on initial creation
+    if (autoFocus) {
+      setTimeout(() => {
+        if (type === 'timeline') {
+          const nameInput = sidebar.querySelector('#timeline-name-input') as HTMLInputElement;
+          if (nameInput) nameInput.focus();
+        } else {
+          const titleInput = sidebar.querySelector('#chapter-title-input') as HTMLInputElement;
+          if (titleInput) titleInput.focus();
+        }
+      }, 0);
+    }
 
     return sidebar;
   }

@@ -18,6 +18,7 @@ export interface TimelineChapter {
   title: string;
   x: number; // Position on the timeline (0-based gridspace)
   width: number; // Width in gridspaces
+  arcId?: string; // Arc this chapter belongs to
 }
 
 export class TimelineCanvas {
@@ -56,6 +57,14 @@ export class TimelineCanvas {
   private pendingDragChapterId: string | null = null;
   private pendingDragChapterTimelineId: string | null = null;
   
+  // Arc dragging
+  private isDraggingArc: boolean = false;
+  private draggedArcId: string | null = null;
+  private draggedArcTimelineId: string | null = null;
+  private pendingDragArcId: string | null = null;
+  private pendingDragArcTimelineId: string | null = null;
+  private hoveredArcInsertionPoint: { timelineId: string | null; position: number } = { timelineId: null, position: -1 };
+  
   // Timelines
   private timelines: TimelinePosition[] = [];
   private timelineHeight: number = 200;
@@ -68,6 +77,10 @@ export class TimelineCanvas {
   // Chapter insertion mode
   private insertionMode: boolean = false;
   private hoveredInsertionPoint: { timelineId: string | null; position: number } = { timelineId: null, position: -1 };
+  
+  // Arc mode
+  private arcMode: boolean = false;
+  private timelineArcs: Map<string, any[]> = new Map(); // timelineId -> arcs
   
   // Grid settings
   private gridSize: number = 50; // In pixels
@@ -90,6 +103,9 @@ export class TimelineCanvas {
   private onReorderChapter: ((timelineId: string, chapterId: string, newPosition: number) => void) | null = null;
   private onTimelineHovered: ((timelineId: string | null, position: 'above' | 'below') => void) | null = null;
   private onTimelineMoved: ((timelineId: string, x: number, y: number) => void) | null = null;
+  private onReorderArc: ((timelineId: string, arcId: string, newPosition: number) => void) | null = null;
+  private onToggleArcMode: (() => void) | null = null;
+  private onBackgroundClick: (() => void) | null = null;
   private getStateChaptersForTimeline: ((timelineId: string) => any[]) | null = null;
   private hoveredInsertZone: { timelineId: string | null; position: 'above' | 'below' } = { timelineId: null, position: 'below' };
 
@@ -174,6 +190,9 @@ export class TimelineCanvas {
             // Toggle insertion mode
             this.insertionMode = !this.insertionMode;
             this.hoveredInsertionPoint = { timelineId: null, position: -1 };
+          } else if (clickedOptionId === 'arc-mode' && this.onToggleArcMode) {
+            // Toggle arc mode
+            this.onToggleArcMode();
           }
           // Close menu smoothly
           this.menu.close();
@@ -291,6 +310,26 @@ export class TimelineCanvas {
           return;
         }
 
+        // Check if clicking on draggable arc title (in arc mode)
+        const draggableArc = this.isDraggableArcElement(mouseX, mouseY);
+        if (draggableArc) {
+          // Store pending drag info
+          this.pendingDragArcId = draggableArc.arcId;
+          this.pendingDragArcTimelineId = draggableArc.timelineId;
+          
+          // Delay drag start to allow double-click detection
+          this.dragDelayTimer = window.setTimeout(() => {
+            if (this.pendingDragArcId) {
+              this.isDraggingArc = true;
+              this.draggedArcId = this.pendingDragArcId;
+              this.draggedArcTimelineId = this.pendingDragArcTimelineId;
+              this.canvas.style.cursor = 'move';
+            }
+            this.dragDelayTimer = null;
+          }, 150);
+          return;
+        }
+
         // Start panning
         this.isDragging = true;
         this.dragStartX = e.clientX;
@@ -298,6 +337,11 @@ export class TimelineCanvas {
         this.dragStartOffsetX = this.offsetX;
         this.dragStartOffsetY = this.offsetY;
         this.canvas.style.cursor = 'grabbing';
+        
+        // Trigger background click callback (for closing sidebars, etc.)
+        if (this.onBackgroundClick) {
+          this.onBackgroundClick();
+        }
       }
     });
 
@@ -384,6 +428,10 @@ export class TimelineCanvas {
             this.render();
           }
         }
+      } else if (this.isDraggingArc && this.draggedArcId && this.draggedArcTimelineId) {
+        // Handle arc dragging - update hover state for insertion between arcs
+        this.hoveredArcInsertionPoint = this.getHoveredArcInsertionPoint(mouseX, mouseY);
+        this.render();
       } else {
         // Handle insertion mode hover
         if (this.insertionMode) {
@@ -417,6 +465,8 @@ export class TimelineCanvas {
         clearTimeout(this.dragDelayTimer);
         this.dragDelayTimer = null;
         this.pendingDragTimelineId = null;
+        this.pendingDragChapterId = null;
+        this.pendingDragArcId = null;
       }
       
       // Save timeline position if we were dragging a timeline
@@ -424,6 +474,16 @@ export class TimelineCanvas {
         const timeline = this.timelines.find(t => t.id === this.draggedTimelineId);
         if (timeline) {
           this.onTimelineMoved(timeline.id, timeline.x, timeline.y);
+        }
+      }
+      
+      // Save arc position if we were dragging an arc
+      if (this.isDraggingArc && this.draggedArcId && this.draggedArcTimelineId && this.onReorderArc) {
+        // Use the hovered arc insertion point to determine where to place the arc
+        if (this.hoveredArcInsertionPoint.timelineId && this.hoveredArcInsertionPoint.position >= 0) {
+          // Pass the full arc group position (including unassigned chapters)
+          // The state manager will handle building the same groups and inserting at this position
+          this.onReorderArc(this.draggedArcTimelineId, this.draggedArcId, this.hoveredArcInsertionPoint.position);
         }
       }
       
@@ -450,9 +510,13 @@ export class TimelineCanvas {
       this.isDragging = false;
       this.isDraggingTimeline = false;
       this.isDraggingChapter = false;
+      this.isDraggingArc = false;
       this.draggedChapterId = null;
       this.draggedChapterTimelineId = null;
+      this.draggedArcId = null;
+      this.draggedArcTimelineId = null;
       this.hoveredInsertionPoint = { timelineId: null, position: -1 };
+      this.hoveredArcInsertionPoint = { timelineId: null, position: -1 };
       this.canvas.style.cursor = 'grab';
     });
 
@@ -460,12 +524,16 @@ export class TimelineCanvas {
       this.isDragging = false;
       this.isDraggingTimeline = false;
       this.isDraggingChapter = false;
+      this.isDraggingArc = false;
       this.draggedTimelineId = null;
       this.draggedChapterId = null;
       this.draggedChapterTimelineId = null;
+      this.draggedArcId = null;
+      this.draggedArcTimelineId = null;
       this.canvas.style.cursor = 'grab';
       this.hoveredInsertZone = { timelineId: null, position: 'below' };
       this.hoveredInsertionPoint = { timelineId: null, position: -1 };
+      this.hoveredArcInsertionPoint = { timelineId: null, position: -1 };
       if (this.onTimelineHovered) {
         this.onTimelineHovered(null, 'below');
       }
@@ -636,12 +704,24 @@ export class TimelineCanvas {
     this.onReorderChapter = callback;
   }
 
+  setOnReorderArc(callback: (timelineId: string, arcId: string, newPosition: number) => void): void {
+    this.onReorderArc = callback;
+  }
+
   setOnTimelineHovered(callback: (timelineId: string | null, position: 'above' | 'below') => void): void {
     this.onTimelineHovered = callback;
   }
 
   setOnTimelineMoved(callback: (timelineId: string, x: number, y: number) => void): void {
     this.onTimelineMoved = callback;
+  }
+
+  setOnToggleArcMode(callback: () => void): void {
+    this.onToggleArcMode = callback;
+  }
+
+  setOnBackgroundClick(callback: () => void): void {
+    this.onBackgroundClick = callback;
   }
 
   setGetStateChaptersCallback(callback: (timelineId: string) => any[]): void {
@@ -652,6 +732,21 @@ export class TimelineCanvas {
     this.insertionMode = !this.insertionMode;
     this.hoveredInsertionPoint = { timelineId: null, position: -1 };
     this.render();
+  }
+
+  setArcMode(enabled: boolean): void {
+    this.arcMode = enabled;
+    this.render();
+  }
+
+  updateTimelineArcs(timelineId: string, arcs: any[]): void {
+    this.timelineArcs.set(timelineId, arcs);
+    this.render();
+  }
+
+  updateTimelineChaptersWithArcs(timelineId: string, chapters: any[], arcs: any[]): void {
+    this.updateTimelineArcs(timelineId, arcs);
+    this.updateTimelineChapters(timelineId, chapters);
   }
 
   /**
@@ -689,7 +784,8 @@ export class TimelineCanvas {
         id: chapter.id,
         title: chapter.title,
         x: currentX,
-        width: chapterWidth
+        width: chapterWidth,
+        arcId: chapter.arcId
       };
       visualChapters.push(visualChapter);
       currentX += chapterWidth;
@@ -776,6 +872,19 @@ export class TimelineCanvas {
   }
 
   private drawTimelines(): void {
+    if (this.arcMode) {
+      this.drawTimelinesArcMode();
+    } else {
+      this.drawTimelinesNormalMode();
+    }
+
+    // Draw insertion mode indicators
+    if (this.insertionMode || this.isDraggingChapter) {
+      this.drawInsertionIndicators();
+    }
+  }
+
+  private drawTimelinesNormalMode(): void {
     this.timelines.forEach(timeline => {
       const screenX = timeline.x * this.zoom + this.offsetX;
       const screenY = timeline.y * this.zoom + this.offsetY;
@@ -887,11 +996,330 @@ export class TimelineCanvas {
       const titleGap = 10; // Fixed distance from timeline start
       this.ctx.fillText(timeline.name, screenX - titleGap, screenY);
     });
+  }
 
-    // Draw insertion mode indicators
-    if (this.insertionMode || this.isDraggingChapter) {
-      this.drawInsertionIndicators();
-    }
+  private drawTimelinesArcMode(): void {
+    this.timelines.forEach(timeline => {
+      const screenX = timeline.x * this.zoom + this.offsetX;
+      const screenY = timeline.y * this.zoom + this.offsetY;
+      const chapterSegmentWidth = this.gridSize * this.zoom;
+      const arcs = this.timelineArcs.get(timeline.id) || [];
+
+      // Group chapters by arc (keeping them in order and grouping adjacent chapters)
+      // Chapters without an arc are treated as individual groups
+      const arcGroups: Array<{ arcId: string; chapters: TimelineChapter[] }> = [];
+      if (timeline.chapters) {
+        let currentArcId: string | null = null;
+        let currentGroup: TimelineChapter[] = [];
+        
+        timeline.chapters.forEach(chapter => {
+          if (chapter.title === 'Head' || chapter.title === 'Tail') return;
+          
+          // Each unassigned chapter is its own group (use chapter ID as unique arcId)
+          const arcId = chapter.arcId || `unassigned-${chapter.id}`;
+          
+          if (arcId !== currentArcId) {
+            // New arc group
+            if (currentGroup.length > 0) {
+              arcGroups.push({ arcId: currentArcId!, chapters: currentGroup });
+            }
+            currentArcId = arcId;
+            currentGroup = [chapter];
+          } else {
+            // Same arc, add to current group
+            currentGroup.push(chapter);
+          }
+        });
+        
+        // Add the last group
+        if (currentGroup.length > 0 && currentArcId) {
+          arcGroups.push({ arcId: currentArcId, chapters: currentGroup });
+        }
+      }
+
+      // Draw horizontal timeline line segments colored by arc
+      // First, draw the head section in black (from timeline start to first chapter or tail)
+      if (timeline.chapters && timeline.chapters.length > 0) {
+        const firstRealChapter = timeline.chapters.find(ch => ch.title !== 'Head' && ch.title !== 'Tail');
+        if (firstRealChapter) {
+          const headEndX = screenX + (firstRealChapter.x * chapterSegmentWidth);
+          this.ctx.strokeStyle = '#333333';
+          this.ctx.lineWidth = 3;
+          this.ctx.beginPath();
+          this.ctx.moveTo(screenX, screenY);
+          this.ctx.lineTo(headEndX, screenY);
+          this.ctx.stroke();
+        } else {
+          // No real chapters, draw from start to tail
+          const tailChapter = timeline.chapters[timeline.chapters.length - 1];
+          if (tailChapter) {
+            const headEndX = screenX + (tailChapter.x * chapterSegmentWidth);
+            this.ctx.strokeStyle = '#333333';
+            this.ctx.lineWidth = 3;
+            this.ctx.beginPath();
+            this.ctx.moveTo(screenX, screenY);
+            this.ctx.lineTo(headEndX, screenY);
+            this.ctx.stroke();
+          }
+        }
+      }
+
+      // Draw arc-colored segments
+      arcGroups.forEach(group => {
+        const arc = arcs.find(a => a.id === group.arcId);
+        const arcColor = arc?.color || '#333333';
+        
+        if (group.chapters.length > 0) {
+          const firstChapter = group.chapters[0];
+          const lastChapter = group.chapters[group.chapters.length - 1];
+          
+          const startX = screenX + (firstChapter.x * chapterSegmentWidth);
+          const endX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth);
+          
+          this.ctx.strokeStyle = arcColor;
+          this.ctx.lineWidth = 3;
+          this.ctx.beginPath();
+          this.ctx.moveTo(startX, screenY);
+          this.ctx.lineTo(endX, screenY);
+          this.ctx.stroke();
+        }
+      });
+
+      // Draw the tail section in black (from last chapter to tail)
+      if (timeline.chapters && timeline.chapters.length > 0) {
+        const lastRealChapter = [...timeline.chapters].reverse().find(ch => ch.title !== 'Head' && ch.title !== 'Tail');
+        const tailChapter = timeline.chapters[timeline.chapters.length - 1];
+        if (lastRealChapter && tailChapter) {
+          const tailStartX = screenX + ((lastRealChapter.x + lastRealChapter.width) * chapterSegmentWidth);
+          const tailEndX = screenX + ((tailChapter.x + tailChapter.width) * chapterSegmentWidth);
+          this.ctx.strokeStyle = '#333333';
+          this.ctx.lineWidth = 3;
+          this.ctx.beginPath();
+          this.ctx.moveTo(tailStartX, screenY);
+          this.ctx.lineTo(tailEndX, screenY);
+          this.ctx.stroke();
+        } else if (tailChapter) {
+          // No real chapters, tail section already drawn as part of head
+          // Just draw the tail chapter itself
+          const tailStartX = screenX + (tailChapter.x * chapterSegmentWidth);
+          const tailEndX = screenX + ((tailChapter.x + tailChapter.width) * chapterSegmentWidth);
+          this.ctx.strokeStyle = '#333333';
+          this.ctx.lineWidth = 3;
+          this.ctx.beginPath();
+          this.ctx.moveTo(tailStartX, screenY);
+          this.ctx.lineTo(tailEndX, screenY);
+          this.ctx.stroke();
+        }
+      }
+
+      // Draw chapters with black tick marks
+      if (timeline.chapters) {
+        timeline.chapters.forEach(chapter => {
+          if (chapter.title === 'Head' || chapter.title === 'Tail') return;
+          
+          const chapterScreenX = screenX + (chapter.x * chapterSegmentWidth);
+          const chapterScreenWidth = chapter.width * chapterSegmentWidth;
+          const tickHeight = 8;
+          
+          // Draw tick marks in black
+          this.ctx.strokeStyle = '#333333';
+          this.ctx.lineWidth = 2;
+          
+          // Start tick
+          this.ctx.beginPath();
+          this.ctx.moveTo(chapterScreenX, screenY - tickHeight);
+          this.ctx.lineTo(chapterScreenX, screenY + tickHeight);
+          this.ctx.stroke();
+          
+          // End tick
+          this.ctx.beginPath();
+          this.ctx.moveTo(chapterScreenX + chapterScreenWidth, screenY - tickHeight);
+          this.ctx.lineTo(chapterScreenX + chapterScreenWidth, screenY + tickHeight);
+          this.ctx.stroke();
+          
+          // Draw chapter title above the timeline (stays black)
+          this.ctx.fillStyle = '#333333';
+          this.ctx.font = '12px sans-serif';
+          this.ctx.textBaseline = 'bottom';
+          this.ctx.textAlign = 'center';
+          
+          const maxTextWidth = chapterScreenWidth - 4;
+          const textX = chapterScreenX + chapterScreenWidth / 2;
+          const textY = screenY - tickHeight - 4;
+          
+          let displayText = chapter.title;
+          const metrics = this.ctx.measureText(displayText);
+          if (metrics.width > maxTextWidth) {
+            while (displayText.length > 0 && this.ctx.measureText(displayText + '...').width > maxTextWidth) {
+              displayText = displayText.slice(0, -1);
+            }
+            displayText += '...';
+          }
+          this.ctx.fillText(displayText, textX, textY);
+        });
+      }
+
+      // Draw arc group titles
+      arcGroups.forEach(group => {
+        const arc = arcs.find(a => a.id === group.arcId);
+        if (!arc || group.chapters.length === 0) return;
+
+        // Find the range of this arc group
+        const firstChapter = group.chapters[0];
+        const lastChapter = group.chapters[group.chapters.length - 1];
+        
+        const startX = screenX + (firstChapter.x * chapterSegmentWidth);
+        const endX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth);
+        const centerX = (startX + endX) / 2;
+        
+        // Darken arc color by 50% brightness
+        const darkenedColor = this.darkenColor(arc.color, 0.5);
+        
+        // Draw arc title centered above the arc group
+        this.ctx.fillStyle = darkenedColor;
+        this.ctx.font = 'bold 13px sans-serif';
+        this.ctx.textBaseline = 'bottom';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(arc.name, centerX, screenY - 28);
+      });
+
+      // Draw arrow at the end
+      const arrowSize = 12;
+      let arrowStartX = screenX;
+      let arrowEndX = screenX;
+      
+      if (timeline.chapters && timeline.chapters.length > 0) {
+        const lastChapter = timeline.chapters[timeline.chapters.length - 1];
+        arrowStartX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth);
+        arrowEndX = arrowStartX + 20;
+      }
+      
+      const arrowY = screenY;
+      
+      this.ctx.strokeStyle = '#333333';
+      this.ctx.lineWidth = 3;
+      this.ctx.beginPath();
+      this.ctx.moveTo(arrowStartX, arrowY);
+      this.ctx.lineTo(arrowEndX - arrowSize, arrowY);
+      this.ctx.stroke();
+      
+      this.ctx.fillStyle = '#333333';
+      this.ctx.beginPath();
+      this.ctx.moveTo(arrowEndX, arrowY);
+      this.ctx.lineTo(arrowEndX - arrowSize, arrowY - arrowSize / 2);
+      this.ctx.lineTo(arrowEndX - arrowSize, arrowY + arrowSize / 2);
+      this.ctx.closePath();
+      this.ctx.fill();
+
+      // Draw arc insertion point indicators if dragging an arc
+      if (this.isDraggingArc && timeline.id === this.draggedArcTimelineId) {
+        // Find the arc groups for this timeline to determine insertion points
+        const arcGroups: { arcId: string; chapters: any[] }[] = [];
+        
+        if (timeline.chapters) {
+          let currentArcId: string | null = null;
+          let currentGroup: any[] = [];
+
+          timeline.chapters.forEach(chapter => {
+            if (chapter.title === 'Head' || chapter.title === 'Tail') return;
+            
+            // Each unassigned chapter is its own group
+            const arcId = chapter.arcId || `unassigned-${chapter.id}`;
+            
+            if (arcId !== currentArcId) {
+              if (currentGroup.length > 0) {
+                arcGroups.push({ arcId: currentArcId!, chapters: currentGroup });
+              }
+              currentArcId = arcId;
+              currentGroup = [chapter];
+            } else {
+              currentGroup.push(chapter);
+            }
+          });
+
+          if (currentGroup.length > 0 && currentArcId) {
+            arcGroups.push({ arcId: currentArcId, chapters: currentGroup });
+          }
+        }
+
+        // Draw all insertion points between arc groups (red/green like chapters)
+        for (let i = 0; i < arcGroups.length; i++) {
+          const group = arcGroups[i];
+          const lastChapter = group.chapters[group.chapters.length - 1];
+          const insertionX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth);
+          
+          const isHovered = this.hoveredArcInsertionPoint.timelineId === timeline.id &&
+                           this.hoveredArcInsertionPoint.position === i + 1;
+          
+          // Don't show indicator right after the dragged arc
+          const draggedArcIndex = arcGroups.findIndex(g => g.arcId === this.draggedArcId);
+          if (draggedArcIndex !== -1 && (i === draggedArcIndex || i === draggedArcIndex - 1)) {
+            continue;
+          }
+          
+          // Red by default, green when hovered
+          this.ctx.fillStyle = isHovered ? '#00dd00' : 'rgba(220, 0, 0, 0.6)';
+          this.ctx.strokeStyle = isHovered ? '#00aa00' : 'rgba(180, 0, 0, 0.8)';
+          
+          this.ctx.beginPath();
+          this.ctx.arc(insertionX, screenY, 8, 0, Math.PI * 2);
+          this.ctx.fill();
+          
+          this.ctx.lineWidth = 2;
+          this.ctx.beginPath();
+          this.ctx.arc(insertionX, screenY, 8, 0, Math.PI * 2);
+          this.ctx.stroke();
+        }
+        
+        // Also draw before first arc group (position 0)
+        if (arcGroups.length > 0) {
+          const firstGroup = arcGroups[0];
+          const firstChapter = firstGroup.chapters[0];
+          const insertionX = screenX + (firstChapter.x * chapterSegmentWidth);
+          
+          const isHovered = this.hoveredArcInsertionPoint.timelineId === timeline.id &&
+                           this.hoveredArcInsertionPoint.position === 0;
+          
+          const draggedArcIndex = arcGroups.findIndex(g => g.arcId === this.draggedArcId);
+          if (draggedArcIndex !== 0) {
+            this.ctx.fillStyle = isHovered ? '#00dd00' : 'rgba(220, 0, 0, 0.6)';
+            this.ctx.strokeStyle = isHovered ? '#00aa00' : 'rgba(180, 0, 0, 0.8)';
+            
+            this.ctx.beginPath();
+            this.ctx.arc(insertionX, screenY, 8, 0, Math.PI * 2);
+            this.ctx.fill();
+            
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.arc(insertionX, screenY, 8, 0, Math.PI * 2);
+            this.ctx.stroke();
+          }
+        }
+      }
+
+      // Draw timeline title
+      this.ctx.fillStyle = '#333333';
+      this.ctx.font = '14px sans-serif';
+      this.ctx.textBaseline = 'middle';
+      this.ctx.textAlign = 'right';
+      const titleGap = 10;
+      this.ctx.fillText(timeline.name, screenX - titleGap, screenY);
+    });
+  }
+
+  private darkenColor(hex: string, factor: number): string {
+    // Convert hex to RGB
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    
+    // Darken by reducing brightness
+    const newR = Math.round(r * factor);
+    const newG = Math.round(g * factor);
+    const newB = Math.round(b * factor);
+    
+    // Convert back to hex
+    return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
   }
 
   private drawInsertionIndicators(): void {
@@ -1136,6 +1564,152 @@ export class TimelineCanvas {
     return null;
   }
 
+  private isDraggableArcElement(mouseX: number, mouseY: number): { timelineId: string; arcId: string; order: number } | null {
+    // Only allow arc dragging in arc mode
+    if (!this.arcMode) return null;
+
+    const chapterSegmentWidth = this.gridSize * this.zoom;
+
+    for (const timeline of this.timelines) {
+      const screenX = timeline.x * this.zoom + this.offsetX;
+      const screenY = timeline.y * this.zoom + this.offsetY;
+      
+      const arcs = this.timelineArcs.get(timeline.id) || [];
+      if (arcs.length === 0 || !timeline.chapters) continue;
+
+      // Build arc groups just like in drawTimelinesArcMode
+      const arcGroups: { arcId: string; chapters: any[] }[] = [];
+      
+      if (timeline.chapters) {
+        let currentArcId: string | null = null;
+        let currentGroup: any[] = [];
+
+        timeline.chapters.forEach(chapter => {
+          if (chapter.title === 'Head' || chapter.title === 'Tail') return;
+          
+          // Each unassigned chapter is its own group
+          const arcId = chapter.arcId || `unassigned-${chapter.id}`;
+          
+          if (arcId !== currentArcId) {
+            if (currentGroup.length > 0) {
+              arcGroups.push({ arcId: currentArcId!, chapters: currentGroup });
+            }
+            currentArcId = arcId;
+            currentGroup = [chapter];
+          } else {
+            currentGroup.push(chapter);
+          }
+        });
+
+        if (currentGroup.length > 0 && currentArcId) {
+          arcGroups.push({ arcId: currentArcId, chapters: currentGroup });
+        }
+      }
+
+      // Check if clicking on any arc title
+      for (const group of arcGroups) {
+        const arc = arcs.find(a => a.id === group.arcId);
+        if (!arc || group.chapters.length === 0) continue;
+
+        const firstChapter = group.chapters[0];
+        const lastChapter = group.chapters[group.chapters.length - 1];
+        
+        const startX = screenX + (firstChapter.x * chapterSegmentWidth);
+        const endX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth);
+        const centerX = (startX + endX) / 2;
+
+        // Calculate text bounds
+        this.ctx.font = 'bold 13px sans-serif';
+        const textMetrics = this.ctx.measureText(arc.name);
+        const textWidth = textMetrics.width;
+        const textHeight = 16; // Approximate
+        const textX = centerX - textWidth / 2;
+        const textY = screenY - 28 - textHeight;
+
+        if (mouseX > textX && mouseX < textX + textWidth &&
+            mouseY > textY && mouseY < textY + textHeight) {
+          return { timelineId: timeline.id, arcId: arc.id, order: arc.order };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private getHoveredArcInsertionPoint(mouseX: number, mouseY: number): { timelineId: string | null; position: number } {
+    // Only show arc insertion points in arc mode when dragging
+    if (!this.arcMode || !this.isDraggingArc) return { timelineId: null, position: -1 };
+
+    const hitRadius = 15;
+    const chapterSegmentWidth = this.gridSize * this.zoom;
+
+    for (const timeline of this.timelines) {
+      // Only check the timeline we're dragging on
+      if (timeline.id !== this.draggedArcTimelineId) continue;
+      
+      const screenX = timeline.x * this.zoom + this.offsetX;
+      const screenY = timeline.y * this.zoom + this.offsetY;
+      
+      if (!timeline.chapters) continue;
+
+      // Build arc groups
+      const arcGroups: { arcId: string; chapters: any[] }[] = [];
+      
+      if (timeline.chapters) {
+        let currentArcId: string | null = null;
+        let currentGroup: any[] = [];
+
+        timeline.chapters.forEach(chapter => {
+          if (chapter.title === 'Head' || chapter.title === 'Tail') return;
+          
+          // Each unassigned chapter is its own group
+          const arcId = chapter.arcId || `unassigned-${chapter.id}`;
+          
+          if (arcId !== currentArcId) {
+            if (currentGroup.length > 0) {
+              arcGroups.push({ arcId: currentArcId!, chapters: currentGroup });
+            }
+            currentArcId = arcId;
+            currentGroup = [chapter];
+          } else {
+            currentGroup.push(chapter);
+          }
+        });
+
+        if (currentGroup.length > 0 && currentArcId) {
+          arcGroups.push({ arcId: currentArcId, chapters: currentGroup });
+        }
+      }
+
+      // Check insertion points between arc groups
+      for (let i = 0; i < arcGroups.length; i++) {
+        const group = arcGroups[i];
+        const lastChapter = group.chapters[group.chapters.length - 1];
+        const insertionX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth);
+        
+        const distance = Math.sqrt(Math.pow(mouseX - insertionX, 2) + Math.pow(mouseY - screenY, 2));
+        if (distance < hitRadius) {
+          // Return position after this arc group
+          return { timelineId: timeline.id, position: i + 1 };
+        }
+      }
+
+      // Also check before the first arc (position 0)
+      if (arcGroups.length > 0) {
+        const firstGroup = arcGroups[0];
+        const firstChapter = firstGroup.chapters[0];
+        const insertionX = screenX + (firstChapter.x * chapterSegmentWidth);
+        
+        const distance = Math.sqrt(Math.pow(mouseX - insertionX, 2) + Math.pow(mouseY - screenY, 2));
+        if (distance < hitRadius) {
+          return { timelineId: timeline.id, position: 0 };
+        }
+      }
+    }
+
+    return { timelineId: null, position: -1 };
+  }
+
   dispose(): void {
     this.canvas.remove();
   }
@@ -1155,6 +1729,7 @@ class MenuSystem {
   private options: { id: string; label: string }[] = [
     { id: 'new-timeline', label: 'New Timeline' },
     { id: 'new-chapter', label: 'New Chapter' },
+    { id: 'arc-mode', label: 'Toggle Arc Mode' },
     { id: 'new-branch', label: 'New Branch' }
   ];
   

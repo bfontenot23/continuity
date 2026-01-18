@@ -10,6 +10,7 @@ import { TimelineCanvas } from './canvas';
 
 const stateManager = new AppStateManager();
 let currentEditSidebar: HTMLElement | null = null;
+let preservedSidebarState: { type: 'timeline' | 'chapter'; id: string } | null = null;
 
 function initializeApp() {
   const app = document.getElementById('app');
@@ -31,9 +32,10 @@ function initializeApp() {
       currentEditSidebar.remove();
       currentEditSidebar = null;
     }
+    preservedSidebarState = null;
   }
 
-  function showTimelineEditSidebar(timelineId: string) {
+  function showTimelineEditSidebar(timelineId: string, autoFocus: boolean = false) {
     closeSidebar();
     
     const state = stateManager.getState();
@@ -48,13 +50,15 @@ function initializeApp() {
       { id: timelineId, name: continuity.name },
       continuity,
       stateManager,
-      closeSidebar
+      closeSidebar,
+      autoFocus
     );
     
     appElement.appendChild(currentEditSidebar);
+    preservedSidebarState = { type: 'timeline', id: timelineId };
   }
 
-  function showChapterEditSidebar(chapterId: string) {
+  function showChapterEditSidebar(chapterId: string, autoFocus: boolean = false) {
     closeSidebar();
     
     const state = stateManager.getState();
@@ -78,13 +82,15 @@ function initializeApp() {
 
     currentEditSidebar = UIComponents.createEditSidebar(
       'chapter',
-      { id: chapterId, title: foundChapter.title, description: foundChapter.description, gridLength: foundChapter.gridLength },
+      { id: chapterId, title: foundChapter.title, description: foundChapter.description, gridLength: foundChapter.gridLength, arcId: foundChapter.arcId },
       foundContinuity,
       stateManager,
-      closeSidebar
+      closeSidebar,
+      autoFocus
     );
     
     appElement.appendChild(currentEditSidebar);
+    preservedSidebarState = { type: 'chapter', id: chapterId };
   }
 
   let canvasInstance: TimelineCanvas | null = null;
@@ -96,6 +102,8 @@ function initializeApp() {
     if (canvasInstance) {
       lastViewport = canvasInstance.getViewport();
     }
+    // Save sidebar state before closing
+    const savedSidebarState = preservedSidebarState;
     closeSidebar();
 
     const state = stateManager.getState();
@@ -137,9 +145,12 @@ function initializeApp() {
     // Add existing continuities to canvas
     currentProject.continuities.forEach((continuity) => {
       canvas.addTimeline(continuity.id, continuity.name, continuity.x, continuity.y);
-      // Sync chapters from state to canvas visualization
-      canvas.updateTimelineChapters(continuity.id, continuity.chapters);
+      // Sync chapters and arcs from state to canvas visualization
+      canvas.updateTimelineChaptersWithArcs(continuity.id, continuity.chapters, continuity.arcs);
     });
+
+    // Set arc mode state
+    canvas.setArcMode(state.arcMode);
 
     // Setup canvas callbacks
     canvas.setOnAddTimeline(() => {
@@ -168,9 +179,22 @@ function initializeApp() {
       stateManager.updateContinuity(timelineId, { x, y });
     });
 
+    canvas.setOnToggleArcMode(() => {
+      stateManager.toggleArcMode();
+    });
+
+    canvas.setOnBackgroundClick(() => {
+      closeSidebar();
+    });
+
     canvas.setOnReorderChapter((timelineId: string, chapterId: string, targetIndex: number) => {
       // targetIndex is the position in the sorted chapter array (0-based)
       stateManager.reorderChapter(timelineId, chapterId, targetIndex);
+    });
+
+    canvas.setOnReorderArc((timelineId: string, arcId: string, targetIndex: number) => {
+      // targetIndex is the position in the sorted arc array (0-based)
+      stateManager.reorderArc(timelineId, arcId, targetIndex);
     });
 
     canvas.setGetStateChaptersCallback((timelineId: string) => {
@@ -179,6 +203,15 @@ function initializeApp() {
       const continuity = state.currentProject.continuities.find(c => c.id === timelineId);
       return continuity?.chapters || [];
     });
+
+    // Restore sidebar if it was open
+    if (savedSidebarState) {
+      if (savedSidebarState.type === 'timeline') {
+        showTimelineEditSidebar(savedSidebarState.id);
+      } else if (savedSidebarState.type === 'chapter') {
+        showChapterEditSidebar(savedSidebarState.id);
+      }
+    }
   }
 
   function openNewProjectModal() {
@@ -227,8 +260,8 @@ function initializeApp() {
       canvasInstance.centerOnTimeline(continuity.id);
     }
     
-    // Open the edit sidebar for the new timeline immediately
-    showTimelineEditSidebar(continuity.id);
+    // Open the edit sidebar for the new timeline immediately with auto-focus
+    showTimelineEditSidebar(continuity.id, true);
   }
 
   function handleAddChapter(timelineId: string, insertionIndex: number) {
@@ -240,19 +273,18 @@ function initializeApp() {
 
     // Create chapter with default name
     // The timestamp will be set by insertChapter based on position
-    const arcId = continuity.arcs[0]?.id || 'default';
     const chapter = createChapter(
       'Chapter',
-      arcId,
+      undefined,
       1 // Temporary timestamp, will be reassigned by insertChapter
     );
     stateManager.insertChapter(timelineId, chapter, insertionIndex);
     stateManager.selectChapter(chapter.id);
 
-    // Open the edit sidebar for the new chapter immediately (after render)
+    // Open the edit sidebar for the new chapter immediately (after render) with auto-focus
     // We use setTimeout to allow renderUI to complete first
     setTimeout(() => {
-      showChapterEditSidebar(chapter.id);
+      showChapterEditSidebar(chapter.id, true);
     }, 0);
   }
 
@@ -317,6 +349,15 @@ function initializeApp() {
       const state = stateManager.getState();
       if (state.currentProject && canvasInstance) {
         canvasInstance.toggleInsertionMode();
+      }
+    }
+
+    // Shift + A: Toggle Arc Mode
+    if (e.shiftKey && e.key === 'A' && !isInInput) {
+      e.preventDefault();
+      const state = stateManager.getState();
+      if (state.currentProject) {
+        stateManager.toggleArcMode();
       }
     }
   });

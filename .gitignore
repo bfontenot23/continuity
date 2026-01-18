@@ -46,4 +46,4 @@ Thumbs.db
 .cache/
 
 *_AI.md
-copilot_instructions.md
+.github/copilot-instructions.md
