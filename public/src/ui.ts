@@ -1273,8 +1273,8 @@ export class UIComponents {
   }
 
   static createEditSidebar(
-    type: 'timeline' | 'chapter',
-    data: { id: string; name?: string; title?: string; description?: string; gridLength?: number; arcId?: string },
+    type: 'timeline' | 'chapter' | 'branch',
+    data: { id: string; name?: string; title?: string; description?: string; gridLength?: number; arcId?: string; lineStyle?: string },
     continuity: Continuity | null,
     stateManager: AppStateManager,
     onClose: () => void,
@@ -1287,7 +1287,7 @@ export class UIComponents {
     header.className = 'edit-sidebar-header';
     
     const title = document.createElement('h3');
-    title.textContent = type === 'timeline' ? 'Edit Timeline' : 'Edit Chapter';
+    title.textContent = type === 'timeline' ? 'Edit Timeline' : type === 'chapter' ? 'Edit Chapter' : 'Edit Branch';
     header.appendChild(title);
 
     const closeBtn = document.createElement('button');
@@ -1438,7 +1438,7 @@ export class UIComponents {
         });
         content.appendChild(addArcBtn);
       }
-    } else {
+    } else if (type === 'chapter') {
       // Chapter editing
       const titleGroup = document.createElement('div');
       titleGroup.className = 'form-group';
@@ -1557,6 +1557,62 @@ export class UIComponents {
           stateManager.updateChapter(continuity.id, data.id, { gridLength: finalValue });
         });
       }
+    } else if (type === 'branch') {
+      // Branch editing - description and line style fields
+      const descGroup = document.createElement('div');
+      descGroup.className = 'form-group';
+      
+      const descLabel = document.createElement('label');
+      descLabel.textContent = 'Description';
+      descGroup.appendChild(descLabel);
+
+      const descTextarea = document.createElement('textarea');
+      descTextarea.value = data.description || '';
+      descTextarea.placeholder = 'Enter branch description';
+      descTextarea.id = 'branch-desc-input';
+      descGroup.appendChild(descTextarea);
+
+      content.appendChild(descGroup);
+
+      // Autosave on blur
+      descTextarea.addEventListener('blur', () => {
+        stateManager.updateBranch(data.id, { description: descTextarea.value });
+      });
+
+      // Line style selector
+      const lineStyleGroup = document.createElement('div');
+      lineStyleGroup.className = 'form-group';
+      
+      const lineStyleLabel = document.createElement('label');
+      lineStyleLabel.textContent = 'Line Style';
+      lineStyleGroup.appendChild(lineStyleLabel);
+
+      const lineStyleSelect = document.createElement('select');
+      lineStyleSelect.id = 'branch-linestyle-select';
+      
+      const solidOption = document.createElement('option');
+      solidOption.value = 'solid';
+      solidOption.textContent = 'Solid';
+      if ((data.lineStyle || 'solid') === 'solid') {
+        solidOption.selected = true;
+      }
+      lineStyleSelect.appendChild(solidOption);
+      
+      const dashedOption = document.createElement('option');
+      dashedOption.value = 'dashed';
+      dashedOption.textContent = 'Dashed';
+      if (data.lineStyle === 'dashed') {
+        dashedOption.selected = true;
+      }
+      lineStyleSelect.appendChild(dashedOption);
+
+      lineStyleGroup.appendChild(lineStyleSelect);
+      content.appendChild(lineStyleGroup);
+
+      // Autosave on change
+      lineStyleSelect.addEventListener('change', () => {
+        stateManager.updateBranch(data.id, { lineStyle: lineStyleSelect.value as 'solid' | 'dashed' });
+      });
     }
 
     sidebar.appendChild(content);
@@ -1574,7 +1630,7 @@ export class UIComponents {
         if (nameInput && continuity) {
           stateManager.updateContinuity(data.id, { name: nameInput.value });
         }
-      } else {
+      } else if (type === 'chapter') {
         // Chapter saving
         if (continuity) {
           const titleInput = content.querySelector('#chapter-title-input') as HTMLInputElement;
@@ -1593,6 +1649,14 @@ export class UIComponents {
           
           stateManager.updateChapter(continuity.id, data.id, updates);
         }
+      } else if (type === 'branch') {
+        // Branch saving
+        const descTextarea = content.querySelector('#branch-desc-input') as HTMLTextAreaElement;
+        const lineStyleSelect = content.querySelector('#branch-linestyle-select') as HTMLSelectElement;
+        const updates: any = {};
+        if (descTextarea) updates.description = descTextarea.value;
+        if (lineStyleSelect) updates.lineStyle = lineStyleSelect.value;
+        stateManager.updateBranch(data.id, updates);
       }
       onClose();
     };
@@ -1623,10 +1687,12 @@ export class UIComponents {
         `Delete ${type}?`,
         `Are you sure you want to delete this ${type}? This action cannot be undone.`,
         () => {
-          if (type === 'timeline' && continuity) {
+          if (type === 'timeline') {
             stateManager.removeContinuity(data.id);
           } else if (type === 'chapter' && continuity) {
             stateManager.removeChapter(continuity.id, data.id);
+          } else if (type === 'branch') {
+            stateManager.removeBranch(data.id);
           }
           onClose();
         }
@@ -1644,9 +1710,12 @@ export class UIComponents {
         if (type === 'timeline') {
           const nameInput = sidebar.querySelector('#timeline-name-input') as HTMLInputElement;
           if (nameInput) nameInput.focus();
-        } else {
+        } else if (type === 'chapter') {
           const titleInput = sidebar.querySelector('#chapter-title-input') as HTMLInputElement;
           if (titleInput) titleInput.focus();
+        } else if (type === 'branch') {
+          const descTextarea = sidebar.querySelector('#branch-desc-input') as HTMLTextAreaElement;
+          if (descTextarea) descTextarea.focus();
         }
       }, 0);
     }

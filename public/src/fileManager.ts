@@ -39,6 +39,9 @@ export class ContinuityFileManager {
             throw new Error('Invalid .cty file format');
           }
           
+          // Migrate old projects to include branches array
+          this.migrateProject(project);
+          
           resolve(project);
         } catch (error) {
           reject(new Error(`Failed to parse .cty file: ${error instanceof Error ? error.message : String(error)}`));
@@ -49,6 +52,21 @@ export class ContinuityFileManager {
       };
       reader.readAsText(file);
     });
+  }
+
+  /**
+   * Migrate old project formats to current schema
+   * Adds missing properties that didn't exist in earlier versions
+   */
+  static migrateProject(project: Project): void {
+    // Ensure all continuities have branches array
+    if (project.continuities && Array.isArray(project.continuities)) {
+      project.continuities.forEach((continuity: any) => {
+        if (!continuity.branches) {
+          continuity.branches = [];
+        }
+      });
+    }
   }
 
   /**
@@ -80,7 +98,14 @@ export class LocalStorageManager {
   static loadProject(projectId: string): Project | null {
     const key = `${LocalStorageManager.KEY_PREFIX}${projectId}`;
     const json = localStorage.getItem(key);
-    return json ? JSON.parse(json) : null;
+    if (!json) return null;
+    
+    const project = JSON.parse(json) as Project;
+    
+    // Apply migrations to old projects
+    ContinuityFileManager.migrateProject(project);
+    
+    return project;
   }
 
   static listProjects(): string[] {

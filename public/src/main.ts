@@ -1,4 +1,4 @@
-import { createProject, createContinuity, createChapter } from './types';
+import { createProject, createContinuity, createChapter, createBranch } from './types';
 import { ContinuityFileManager, LocalStorageManager } from './fileManager';
 import { AppStateManager } from './state';
 import { UIComponents } from './ui';
@@ -10,7 +10,7 @@ import { TimelineCanvas } from './canvas';
 
 const stateManager = new AppStateManager();
 let currentEditSidebar: HTMLElement | null = null;
-let preservedSidebarState: { type: 'timeline' | 'chapter'; id: string } | null = null;
+let preservedSidebarState: { type: 'timeline' | 'chapter' | 'branch'; id: string } | null = null;
 
 function initializeApp() {
   const app = document.getElementById('app');
@@ -93,6 +93,40 @@ function initializeApp() {
     preservedSidebarState = { type: 'chapter', id: chapterId };
   }
 
+  function showBranchEditSidebar(branchId: string, autoFocus: boolean = false) {
+    closeSidebar();
+    
+    const state = stateManager.getState();
+    const appElement = app;
+    if (!state.currentProject || !appElement) return;
+
+    // Find the branch in any continuity
+    let foundBranch: any = null;
+
+    for (const continuity of state.currentProject.continuities) {
+      if (!continuity.branches) continue; // Skip if no branches array
+      const branch = continuity.branches.find(b => b.id === branchId);
+      if (branch) {
+        foundBranch = branch;
+        break;
+      }
+    }
+
+    if (!foundBranch) return;
+
+    currentEditSidebar = UIComponents.createEditSidebar(
+      'branch',
+      { id: branchId, description: foundBranch.description, lineStyle: foundBranch.lineStyle },
+      null, // Don't need continuity context for branches
+      stateManager,
+      closeSidebar,
+      autoFocus
+    );
+    
+    appElement.appendChild(currentEditSidebar);
+    preservedSidebarState = { type: 'branch' as any, id: branchId };
+  }
+
   let canvasInstance: TimelineCanvas | null = null;
   let lastViewport: { offsetX: number; offsetY: number; zoom: number } | null = null;
 
@@ -149,6 +183,17 @@ function initializeApp() {
       canvas.updateTimelineChaptersWithArcs(continuity.id, continuity.chapters, continuity.arcs);
     });
 
+    // Collect all branches from all continuities (avoiding duplicates)
+    const allBranches = new Map();
+    currentProject.continuities.forEach((continuity) => {
+      if (continuity.branches) { // Handle old projects without branches array
+        continuity.branches.forEach((branch) => {
+          allBranches.set(branch.id, branch);
+        });
+      }
+    });
+    canvas.setBranches(Array.from(allBranches.values()));
+
     // Set arc mode state
     canvas.setArcMode(state.arcMode);
 
@@ -161,6 +206,10 @@ function initializeApp() {
       handleAddChapter(timelineId, position);
     });
 
+    canvas.setOnAddBranch((startTimelineId: string, startPosition: number, endTimelineId: string, endPosition: number) => {
+      handleAddBranch(startTimelineId, startPosition, endTimelineId, endPosition);
+    });
+
     canvas.setOnEditTimeline((timelineId: string) => {
       showTimelineEditSidebar(timelineId);
     });
@@ -169,9 +218,12 @@ function initializeApp() {
       showChapterEditSidebar(chapterId);
     });
 
+    canvas.setOnEditBranch((branchId: string) => {
+      showBranchEditSidebar(branchId);
+    });
+
     canvas.setOnTimelineHovered((timelineId: string | null, position: 'above' | 'below') => {
       // Visual feedback for hover states - can be expanded for more interactivity
-      console.log(`Hovered: ${timelineId} ${position}`);
     });
 
     canvas.setOnTimelineMoved((timelineId: string, x: number, y: number) => {
@@ -210,6 +262,8 @@ function initializeApp() {
         showTimelineEditSidebar(savedSidebarState.id);
       } else if (savedSidebarState.type === 'chapter') {
         showChapterEditSidebar(savedSidebarState.id);
+      } else if (savedSidebarState.type === 'branch') {
+        showBranchEditSidebar(savedSidebarState.id);
       }
     }
   }
@@ -288,6 +342,21 @@ function initializeApp() {
     }, 0);
   }
 
+  function handleAddBranch(startTimelineId: string, startPosition: number, endTimelineId: string, endPosition: number) {
+    const state = stateManager.getState();
+    if (!state.currentProject) return;
+
+    // Create branch
+    const branch = createBranch(startTimelineId, startPosition, endTimelineId, endPosition);
+    stateManager.addBranch(branch);
+    stateManager.selectBranch(branch.id);
+
+    // Open the edit sidebar for the new branch with auto-focus
+    setTimeout(() => {
+      showBranchEditSidebar(branch.id, true);
+    }, 0);
+  }
+
   function handleExport() {
     const state = stateManager.getState();
     if (state.currentProject) {
@@ -358,6 +427,15 @@ function initializeApp() {
       const state = stateManager.getState();
       if (state.currentProject) {
         stateManager.toggleArcMode();
+      }
+    }
+
+    // Shift + B: Toggle Branch Insertion Mode
+    if (e.shiftKey && e.key === 'B' && !isInInput) {
+      e.preventDefault();
+      const state = stateManager.getState();
+      if (state.currentProject && canvasInstance) {
+        canvasInstance.toggleBranchInsertionMode();
       }
     }
   });

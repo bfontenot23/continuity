@@ -21,6 +21,18 @@ export interface Chapter {
   gridLength?: number; // Manual grid length (0 or undefined = auto-calculate from title)
 }
 
+export interface Branch {
+  id: string;
+  description?: string;
+  lineStyle?: 'solid' | 'dashed'; // Default: solid
+  // Start point: reference to a continuity and position on that timeline
+  startContinuityId: string;
+  startPosition: number; // Grid position (0-based), not tied to a specific chapter
+  // End point: reference to a different continuity and position
+  endContinuityId: string;
+  endPosition: number; // Grid position (0-based)
+}
+
 
 
 export interface Continuity {
@@ -32,6 +44,7 @@ export interface Continuity {
   y?: number; // Timeline Y position in world coordinates
   chapters: Chapter[];
   arcs: Arc[];
+  branches: Branch[]; // Branches originating from or ending at this timeline
 }
 
 export interface Project {
@@ -61,6 +74,7 @@ export function createContinuity(name: string): Continuity {
     name,
     chapters: [],
     arcs: [],
+    branches: [],
   };
 }
 
@@ -123,6 +137,21 @@ export function createChapter(
     arcId,
     timestamp,
     gridLength: gridLength || 0,
+  };
+}
+
+export function createBranch(
+  startContinuityId: string,
+  startPosition: number,
+  endContinuityId: string,
+  endPosition: number
+): Branch {
+  return {
+    id: generateId(),
+    startContinuityId,
+    startPosition,
+    endContinuityId,
+    endPosition,
   };
 }
 

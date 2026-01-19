@@ -78,6 +78,12 @@ export class TimelineCanvas {
   private insertionMode: boolean = false;
   private hoveredInsertionPoint: { timelineId: string | null; position: number } = { timelineId: null, position: -1 };
   
+  // Branch insertion mode
+  private branchInsertionMode: boolean = false;
+  private branchFirstPoint: { timelineId: string; position: number } | null = null;
+  private branchHoveredPoint: { timelineId: string | null; position: number } = { timelineId: null, position: -1 };
+  private branches: any[] = []; // Will store all branches for rendering
+  
   // Arc mode
   private arcMode: boolean = false;
   private timelineArcs: Map<string, any[]> = new Map(); // timelineId -> arcs
@@ -98,8 +104,10 @@ export class TimelineCanvas {
   // Callbacks
   private onAddTimeline: (() => void) | null = null;
   private onAddChapter: ((timelineId: string, position: number) => void) | null = null;
+  private onAddBranch: ((startTimelineId: string, startPosition: number, endTimelineId: string, endPosition: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
   private onEditChapter: ((chapterId: string) => void) | null = null;
+  private onEditBranch: ((branchId: string) => void) | null = null;
   private onReorderChapter: ((timelineId: string, chapterId: string, newPosition: number) => void) | null = null;
   private onTimelineHovered: ((timelineId: string | null, position: 'above' | 'below') => void) | null = null;
   private onTimelineMoved: ((timelineId: string, x: number, y: number) => void) | null = null;
@@ -190,6 +198,11 @@ export class TimelineCanvas {
             // Toggle insertion mode
             this.insertionMode = !this.insertionMode;
             this.hoveredInsertionPoint = { timelineId: null, position: -1 };
+          } else if (clickedOptionId === 'new-branch') {
+            // Toggle branch insertion mode
+            this.branchInsertionMode = !this.branchInsertionMode;
+            this.branchFirstPoint = null;
+            this.branchHoveredPoint = { timelineId: null, position: -1 };
           } else if (clickedOptionId === 'arc-mode' && this.onToggleArcMode) {
             // Toggle arc mode
             this.onToggleArcMode();
@@ -220,6 +233,46 @@ export class TimelineCanvas {
           } else {
             // Invalid location, exit insertion mode
             this.insertionMode = false;
+            this.render();
+          }
+          return;
+        }
+
+        // Handle branch insertion mode
+        if (this.branchInsertionMode) {
+          const clickResult = this.getClickedBranchInsertionPoint(mouseX, mouseY);
+          if (clickResult) {
+            if (!this.branchFirstPoint) {
+              // First point selected - store timeline ID and grid position
+              this.branchFirstPoint = { 
+                timelineId: clickResult.timelineId, 
+                position: clickResult.gridPosition 
+              };
+              this.render();
+            } else {
+              // Second point selected - validate and create branch
+              if (clickResult.timelineId !== this.branchFirstPoint.timelineId) {
+                // Valid: different timelines
+                if (this.onAddBranch) {
+                  this.onAddBranch(
+                    this.branchFirstPoint.timelineId,
+                    this.branchFirstPoint.position,
+                    clickResult.timelineId,
+                    clickResult.gridPosition
+                  );
+                }
+                this.branchInsertionMode = false;
+                this.branchFirstPoint = null;
+                this.render();
+              } else {
+                // Invalid: same timeline - do nothing, wait for valid second point
+                // Could optionally show an error or just ignore
+              }
+            }
+          } else {
+            // Invalid location, exit branch insertion mode
+            this.branchInsertionMode = false;
+            this.branchFirstPoint = null;
             this.render();
           }
           return;
@@ -258,6 +311,13 @@ export class TimelineCanvas {
               // Head/tail chapters open timeline edit
               this.onEditTimeline(chapter.timelineId);
             }
+            return;
+          }
+          
+          // Check for double-click on a branch
+          const clickedBranchId = this.getClickedBranch(mouseX, mouseY);
+          if (clickedBranchId && this.onEditBranch) {
+            this.onEditBranch(clickedBranchId);
             return;
           }
         }
@@ -366,6 +426,20 @@ export class TimelineCanvas {
         this.canvas.style.cursor = 'grab';
       }
 
+      // Update branch hover tracking with grid positions
+      if (this.branchInsertionMode) {
+        const hoverResult = this.getClickedBranchInsertionPoint(mouseX, mouseY);
+        if (hoverResult) {
+          this.branchHoveredPoint = { 
+            timelineId: hoverResult.timelineId, 
+            position: hoverResult.gridPosition 
+          };
+        } else {
+          this.branchHoveredPoint = { timelineId: null, position: -1 };
+        }
+        this.render();
+      }
+
       if (this.isDragging) {
         const deltaX = e.clientX - this.dragStartX;
         const deltaY = e.clientY - this.dragStartY;
@@ -442,14 +516,39 @@ export class TimelineCanvas {
             this.render();
           }
           this.canvas.style.cursor = insertionPoint.position >= 0 ? 'crosshair' : 'not-allowed';
+        } else if (this.branchInsertionMode) {
+          // Handle branch insertion mode hover - use grid position
+          const hoverResult = this.getClickedBranchInsertionPoint(mouseX, mouseY);
+          const newHoverPoint = hoverResult 
+            ? { timelineId: hoverResult.timelineId, position: hoverResult.gridPosition }
+            : { timelineId: null, position: -1 };
+            
+          if (newHoverPoint.timelineId !== this.branchHoveredPoint.timelineId ||
+              newHoverPoint.position !== this.branchHoveredPoint.position) {
+            this.branchHoveredPoint = newHoverPoint;
+            this.render();
+          }
+          
+          // Validate cursor based on whether it's a valid point
+          let isValid = newHoverPoint.position >= 0;
+          if (isValid && this.branchFirstPoint) {
+            // Second point - check if it's a different timeline
+            isValid = newHoverPoint.timelineId !== this.branchFirstPoint.timelineId;
+          }
+          this.canvas.style.cursor = isValid ? 'crosshair' : 'not-allowed';
         } else {
           // Check hover states
           this.updateHoverState(mouseX, mouseY);
+          
+          // Check if hovering over a branch
+          const hoveredBranchId = this.getClickedBranch(mouseX, mouseY);
           
           // Check if hovering over draggable timeline element
           const draggableElement = this.isDraggableTimelineElement(mouseX, mouseY);
           if (draggableElement?.isDraggable) {
             this.canvas.style.cursor = 'move';
+          } else if (hoveredBranchId) {
+            this.canvas.style.cursor = 'pointer';
           } else if (this.isClickingMenuButton(mouseX, mouseY)) {
             this.canvas.style.cursor = 'pointer';
           } else {
@@ -692,12 +791,20 @@ export class TimelineCanvas {
     this.onAddChapter = callback;
   }
 
+  setOnAddBranch(callback: (startTimelineId: string, startPosition: number, endTimelineId: string, endPosition: number) => void): void {
+    this.onAddBranch = callback;
+  }
+
   setOnEditTimeline(callback: (timelineId: string) => void): void {
     this.onEditTimeline = callback;
   }
 
   setOnEditChapter(callback: (chapterId: string) => void): void {
     this.onEditChapter = callback;
+  }
+
+  setOnEditBranch(callback: (branchId: string) => void): void {
+    this.onEditBranch = callback;
   }
 
   setOnReorderChapter(callback: (timelineId: string, chapterId: string, newPosition: number) => void): void {
@@ -731,6 +838,18 @@ export class TimelineCanvas {
   toggleInsertionMode(): void {
     this.insertionMode = !this.insertionMode;
     this.hoveredInsertionPoint = { timelineId: null, position: -1 };
+    this.render();
+  }
+
+  toggleBranchInsertionMode(): void {
+    this.branchInsertionMode = !this.branchInsertionMode;
+    this.branchFirstPoint = null;
+    this.branchHoveredPoint = { timelineId: null, position: -1 };
+    this.render();
+  }
+
+  setBranches(branches: any[]): void {
+    this.branches = branches;
     this.render();
   }
 
@@ -878,10 +997,52 @@ export class TimelineCanvas {
       this.drawTimelinesNormalMode();
     }
 
+    // Draw branches
+    this.drawBranches();
+
     // Draw insertion mode indicators
     if (this.insertionMode || this.isDraggingChapter) {
       this.drawInsertionIndicators();
     }
+
+    // Draw branch insertion mode indicators
+    if (this.branchInsertionMode) {
+      this.drawBranchInsertionIndicators();
+    }
+  }
+
+  /**
+   * Check if a branch starts at the end of a timeline (no more chapters after)
+   * If so, the tail should be hidden and replaced by the branch as the "tail"
+   */
+  private shouldHideTailForTimeline(timelineId: string): boolean {
+    // Find the timeline
+    const timeline = this.timelines.find(t => t.id === timelineId);
+    if (!timeline || !timeline.chapters) return false;
+
+    // Find the last real chapter (not Tail)
+    let lastRealChapterIndex = -1;
+    for (let i = timeline.chapters.length - 1; i >= 0; i--) {
+      if (timeline.chapters[i].title !== 'Tail') {
+        lastRealChapterIndex = i;
+        break;
+      }
+    }
+
+    if (lastRealChapterIndex === -1) return false; // No real chapters
+
+    const lastRealChapter = timeline.chapters[lastRealChapterIndex];
+    const endPosition = lastRealChapter.x + lastRealChapter.width;
+
+    // Check if any branch starts at this position
+    for (const branch of this.branches) {
+      if (branch.startContinuityId === timelineId && 
+          Math.round(branch.startPosition) === Math.round(endPosition)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private drawTimelinesNormalMode(): void {
@@ -890,11 +1051,23 @@ export class TimelineCanvas {
       const screenY = timeline.y * this.zoom + this.offsetY;
       const chapterSegmentWidth = this.gridSize * this.zoom; // One gridspace per chapter
       
+      // Check if we should hide the tail (branch starts at end)
+      const shouldHideTailNormal = this.shouldHideTailForTimeline(timeline.id);
+      
       // Calculate line end position based on last chapter
       let lineEndX = screenX + (timeline.width * this.zoom);
       if (timeline.chapters && timeline.chapters.length > 0) {
-        const lastChapter = timeline.chapters[timeline.chapters.length - 1];
-        lineEndX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth) + 20; // 20px gap before arrow
+        let lastChapter = timeline.chapters[timeline.chapters.length - 1];
+        
+        // If hiding tail, use the last real chapter instead of Tail
+        if (shouldHideTailNormal) {
+          const lastRealChapter = [...timeline.chapters].reverse().find(ch => ch.title !== 'Head' && ch.title !== 'Tail');
+          if (lastRealChapter) {
+            lastChapter = lastRealChapter;
+          }
+        }
+        
+        lineEndX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth) + (shouldHideTailNormal ? 0 : 20); // No gap if tail hidden
       }
 
       // Draw horizontal timeline line through all chapters
@@ -957,35 +1130,40 @@ export class TimelineCanvas {
       }
 
       // Draw arrow at the end - dynamic based on last chapter
-      const arrowSize = 12;
-      let arrowStartX = screenX;
-      let arrowEndX = screenX;
+      // But hide if a branch starts at the end position (branch becomes the new "tail")
+      const shouldHideTail = this.shouldHideTailForTimeline(timeline.id);
       
-      // Arrow starts from after the last chapter and extends to the calculated width
-      if (timeline.chapters && timeline.chapters.length > 0) {
-        const lastChapter = timeline.chapters[timeline.chapters.length - 1];
-        arrowStartX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth);
-        arrowEndX = arrowStartX + 20; // Small gap after last chapter
+      if (!shouldHideTail) {
+        const arrowSize = 12;
+        let arrowStartX = screenX;
+        let arrowEndX = screenX;
+        
+        // Arrow starts from after the last chapter and extends to the calculated width
+        if (timeline.chapters && timeline.chapters.length > 0) {
+          const lastChapter = timeline.chapters[timeline.chapters.length - 1];
+          arrowStartX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth);
+          arrowEndX = arrowStartX + 20; // Small gap after last chapter
+        }
+        
+        const arrowY = screenY;
+        
+        // Draw line from last chapter to arrow
+        this.ctx.strokeStyle = '#333333';
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.moveTo(arrowStartX, arrowY);
+        this.ctx.lineTo(arrowEndX - arrowSize, arrowY);
+        this.ctx.stroke();
+        
+        // Draw arrow head
+        this.ctx.fillStyle = '#333333';
+        this.ctx.beginPath();
+        this.ctx.moveTo(arrowEndX, arrowY);
+        this.ctx.lineTo(arrowEndX - arrowSize, arrowY - arrowSize / 2);
+        this.ctx.lineTo(arrowEndX - arrowSize, arrowY + arrowSize / 2);
+        this.ctx.closePath();
+        this.ctx.fill();
       }
-      
-      const arrowY = screenY;
-      
-      // Draw line from last chapter to arrow
-      this.ctx.strokeStyle = '#333333';
-      this.ctx.lineWidth = 3;
-      this.ctx.beginPath();
-      this.ctx.moveTo(arrowStartX, arrowY);
-      this.ctx.lineTo(arrowEndX - arrowSize, arrowY);
-      this.ctx.stroke();
-      
-      // Draw arrow head
-      this.ctx.fillStyle = '#333333';
-      this.ctx.beginPath();
-      this.ctx.moveTo(arrowEndX, arrowY);
-      this.ctx.lineTo(arrowEndX - arrowSize, arrowY - arrowSize / 2);
-      this.ctx.lineTo(arrowEndX - arrowSize, arrowY + arrowSize / 2);
-      this.ctx.closePath();
-      this.ctx.fill();
 
       // Draw timeline title (clickable for editing)
       // Position to the left of timeline, right-aligned with fixed gap
@@ -1086,7 +1264,10 @@ export class TimelineCanvas {
       });
 
       // Draw the tail section in black (from last chapter to tail)
-      if (timeline.chapters && timeline.chapters.length > 0) {
+      // But hide if a branch starts at the end position
+      const shouldHideTail = this.shouldHideTailForTimeline(timeline.id);
+      
+      if (!shouldHideTail && timeline.chapters && timeline.chapters.length > 0) {
         const lastRealChapter = [...timeline.chapters].reverse().find(ch => ch.title !== 'Head' && ch.title !== 'Tail');
         const tailChapter = timeline.chapters[timeline.chapters.length - 1];
         if (lastRealChapter && tailChapter) {
@@ -1183,33 +1364,37 @@ export class TimelineCanvas {
         this.ctx.fillText(arc.name, centerX, screenY - 28);
       });
 
-      // Draw arrow at the end
-      const arrowSize = 12;
-      let arrowStartX = screenX;
-      let arrowEndX = screenX;
+      // Draw arrow at the end (unless tail is hidden by a branch)
+      const shouldHideTailArc = this.shouldHideTailForTimeline(timeline.id);
       
-      if (timeline.chapters && timeline.chapters.length > 0) {
-        const lastChapter = timeline.chapters[timeline.chapters.length - 1];
-        arrowStartX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth);
-        arrowEndX = arrowStartX + 20;
+      if (!shouldHideTailArc) {
+        const arrowSize = 12;
+        let arrowStartX = screenX;
+        let arrowEndX = screenX;
+        
+        if (timeline.chapters && timeline.chapters.length > 0) {
+          const lastChapter = timeline.chapters[timeline.chapters.length - 1];
+          arrowStartX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth);
+          arrowEndX = arrowStartX + 20;
+        }
+        
+        const arrowY = screenY;
+        
+        this.ctx.strokeStyle = '#333333';
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.moveTo(arrowStartX, arrowY);
+        this.ctx.lineTo(arrowEndX - arrowSize, arrowY);
+        this.ctx.stroke();
+        
+        this.ctx.fillStyle = '#333333';
+        this.ctx.beginPath();
+        this.ctx.moveTo(arrowEndX, arrowY);
+        this.ctx.lineTo(arrowEndX - arrowSize, arrowY - arrowSize / 2);
+        this.ctx.lineTo(arrowEndX - arrowSize, arrowY + arrowSize / 2);
+        this.ctx.closePath();
+        this.ctx.fill();
       }
-      
-      const arrowY = screenY;
-      
-      this.ctx.strokeStyle = '#333333';
-      this.ctx.lineWidth = 3;
-      this.ctx.beginPath();
-      this.ctx.moveTo(arrowStartX, arrowY);
-      this.ctx.lineTo(arrowEndX - arrowSize, arrowY);
-      this.ctx.stroke();
-      
-      this.ctx.fillStyle = '#333333';
-      this.ctx.beginPath();
-      this.ctx.moveTo(arrowEndX, arrowY);
-      this.ctx.lineTo(arrowEndX - arrowSize, arrowY - arrowSize / 2);
-      this.ctx.lineTo(arrowEndX - arrowSize, arrowY + arrowSize / 2);
-      this.ctx.closePath();
-      this.ctx.fill();
 
       // Draw arc insertion point indicators if dragging an arc
       if (this.isDraggingArc && timeline.id === this.draggedArcTimelineId) {
@@ -1426,6 +1611,278 @@ export class TimelineCanvas {
       const insertionIndex = result.position - 1;
       return { timelineId: result.timelineId, position: insertionIndex };
     }
+    return null;
+  }
+
+  /**
+   * Get clicked branch insertion point with actual grid position
+   */
+  private getClickedBranchInsertionPoint(mouseX: number, mouseY: number): { timelineId: string; gridPosition: number } | null {
+    const hitRadius = 15;
+
+    for (const timeline of this.timelines) {
+      const screenX = timeline.x * this.zoom + this.offsetX;
+      const screenY = timeline.y * this.zoom + this.offsetY;
+      const chapterSegmentWidth = this.gridSize * this.zoom;
+
+      if (timeline.chapters && timeline.chapters.length > 0) {
+        // Check all insertion points between chapters (not after tail)
+        const numInsertionPoints = timeline.chapters.length - 1;
+        for (let i = 0; i < numInsertionPoints; i++) {
+          const chapter = timeline.chapters[i];
+          // Calculate grid position from chapter data
+          const gridPosition = Math.round((chapter.x + chapter.width) * 100) / 100;
+          const insertionX = screenX + (gridPosition * chapterSegmentWidth);
+          
+          const distance = Math.sqrt(Math.pow(mouseX - insertionX, 2) + Math.pow(mouseY - screenY, 2));
+          if (distance < hitRadius) {
+            // Return the actual grid position (world coordinates)
+            return { timelineId: timeline.id, gridPosition };
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Draw all branches between timelines
+   */
+  private drawBranches(): void {
+    this.branches.forEach(branch => {
+      const startTimeline = this.timelines.find(t => t.id === branch.startContinuityId);
+      const endTimeline = this.timelines.find(t => t.id === branch.endContinuityId);
+      
+      if (!startTimeline || !endTimeline) return;
+      
+      // Calculate start and end positions in world coordinates
+      const chapterSegmentWidth = this.gridSize; // World coordinates, not screen
+      const startWorldX = startTimeline.x + (branch.startPosition * chapterSegmentWidth);
+      const startWorldY = startTimeline.y;
+      const endWorldX = endTimeline.x + (branch.endPosition * chapterSegmentWidth);
+      const endWorldY = endTimeline.y;
+      
+      // Convert to screen coordinates
+      const startScreenX = startWorldX * this.zoom + this.offsetX;
+      const startScreenY = startWorldY * this.zoom + this.offsetY;
+      const endScreenX = endWorldX * this.zoom + this.offsetX;
+      const endScreenY = endWorldY * this.zoom + this.offsetY;
+      
+      // Draw curved line using S-curve (cubic bezier)
+      this.ctx.strokeStyle = '#000000';
+      this.ctx.lineWidth = 3;
+      
+      // Apply line style (default solid)
+      if (branch.lineStyle === 'dashed') {
+        this.ctx.setLineDash([8, 4]); // 8px dashes, 4px gaps
+      } else {
+        this.ctx.setLineDash([]);
+      }
+      
+      this.ctx.beginPath();
+      this.ctx.moveTo(startScreenX, startScreenY);
+      
+      // S-curve control points - create backwards S shape
+      const dx = endScreenX - startScreenX;
+      const dy = endScreenY - startScreenY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const curveOffset = Math.min(distance * 0.4, 100);
+      
+      // First control point: offset to the right of start point
+      const cp1X = startScreenX + curveOffset;
+      const cp1Y = startScreenY;
+      
+      // Second control point: offset to the left of end point
+      const cp2X = endScreenX - curveOffset;
+      const cp2Y = endScreenY;
+      
+      this.ctx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, endScreenX, endScreenY);
+      this.ctx.stroke();
+      
+      // Reset line dash to avoid affecting other drawings
+      this.ctx.setLineDash([]);
+      
+      // Draw start and end points
+      this.ctx.fillStyle = '#000000';
+      this.ctx.beginPath();
+      this.ctx.arc(startScreenX, startScreenY, 5, 0, Math.PI * 2);
+      this.ctx.fill();
+      
+      this.ctx.beginPath();
+      this.ctx.arc(endScreenX, endScreenY, 5, 0, Math.PI * 2);
+      this.ctx.fill();
+    });
+  }
+
+  /**
+   * Draw branch insertion mode indicators and preview
+   */
+  private drawBranchInsertionIndicators(): void {
+    // Draw all insertion points on all timelines
+    this.timelines.forEach((timeline) => {
+      const screenX = timeline.x * this.zoom + this.offsetX;
+      const screenY = timeline.y * this.zoom + this.offsetY;
+      const chapterSegmentWidth = this.gridSize * this.zoom;
+      
+      if (timeline.chapters && timeline.chapters.length > 0) {
+        // Show insertion points between chapters (same as chapter insertion mode)
+        const numInsertionPoints = timeline.chapters.length - 1;
+        for (let i = 0; i < numInsertionPoints; i++) {
+          const chapter = timeline.chapters[i];
+          // Round to avoid floating point precision issues
+          const gridPosition = Math.round((chapter.x + chapter.width) * 100) / 100;
+          const insertionX = screenX + (gridPosition * chapterSegmentWidth);
+          
+          const isHovered = this.branchHoveredPoint.timelineId === timeline.id &&
+                           this.branchHoveredPoint.position === gridPosition;
+          
+          const isFirstPoint = this.branchFirstPoint?.timelineId === timeline.id &&
+                               this.branchFirstPoint?.position === gridPosition;
+          
+          // Color: blue for valid points, red if same timeline as first point
+          let validPoint = true;
+          if (this.branchFirstPoint && timeline.id === this.branchFirstPoint.timelineId) {
+            validPoint = false; // Can't connect timeline to itself
+          }
+          
+          if (isFirstPoint) {
+            // First point is always blue and larger
+            this.ctx.fillStyle = 'rgba(0, 100, 255, 0.8)';
+            this.ctx.strokeStyle = 'rgba(0, 70, 200, 1.0)';
+            this.ctx.beginPath();
+            this.ctx.arc(insertionX, screenY, 10, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.arc(insertionX, screenY, 10, 0, Math.PI * 2);
+            this.ctx.stroke();
+          } else if (!validPoint) {
+            // Invalid point (same timeline) - don't render it
+          } else {
+            // Valid point
+            this.ctx.fillStyle = isHovered ? 'rgba(0, 150, 0, 0.8)' : 'rgba(100, 200, 100, 0.5)';
+            this.ctx.strokeStyle = isHovered ? 'rgba(0, 100, 0, 1.0)' : 'rgba(80, 150, 80, 0.8)';
+            this.ctx.beginPath();
+            this.ctx.arc(insertionX, screenY, 8, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.arc(insertionX, screenY, 8, 0, Math.PI * 2);
+            this.ctx.stroke();
+          }
+        }
+      }
+    });
+    
+    // Draw preview line if first point is selected and hovering over a valid second point
+    if (this.branchFirstPoint && this.branchHoveredPoint.timelineId !== null &&
+        this.branchHoveredPoint.timelineId !== this.branchFirstPoint.timelineId) {
+      
+      const startTimeline = this.timelines.find(t => t.id === this.branchFirstPoint!.timelineId);
+      const endTimeline = this.timelines.find(t => t.id === this.branchHoveredPoint.timelineId);
+      
+      if (startTimeline && endTimeline) {
+        // Calculate world coordinates first, then convert to screen (same as drawBranches)
+        const chapterSegmentWidth = this.gridSize; // World coordinates, not screen
+        
+        // Calculate start position in world coordinates
+        const startWorldX = startTimeline.x + (this.branchFirstPoint.position * chapterSegmentWidth);
+        const startWorldY = startTimeline.y;
+        
+        // Calculate end position in world coordinates
+        const endWorldX = endTimeline.x + (this.branchHoveredPoint.position * chapterSegmentWidth);
+        const endWorldY = endTimeline.y;
+        
+        // Convert to screen coordinates
+        const startScreenX = startWorldX * this.zoom + this.offsetX;
+        const startScreenY = startWorldY * this.zoom + this.offsetY;
+        const endScreenX = endWorldX * this.zoom + this.offsetX;
+        const endScreenY = endWorldY * this.zoom + this.offsetY;
+        
+        // Draw preview curved line (S-curve with cubic bezier)
+        this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+        this.ctx.lineWidth = 3;
+        this.ctx.setLineDash([5, 5]);
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(startScreenX, startScreenY);
+        
+        // S-curve control points for preview
+        const dx = endScreenX - startScreenX;
+        const dy = endScreenY - startScreenY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const curveOffset = Math.min(distance * 0.4, 100);
+        
+        const cp1X = startScreenX + curveOffset;
+        const cp1Y = startScreenY;
+        
+        const cp2X = endScreenX - curveOffset;
+        const cp2Y = endScreenY;
+        
+        this.ctx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, endScreenX, endScreenY);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]);
+      }
+    }
+  }
+
+  /**
+   * Detect if user clicked on a branch endpoint (for opening branch edit)
+   */
+  private getClickedBranch(mouseX: number, mouseY: number): string | null {
+    const hitRadius = 15; // Pixels to detect click on branch curve or endpoint
+    
+    for (const branch of this.branches) {
+      // Find the start and end timelines
+      const startTimeline = this.timelines.find(t => t.id === branch.startContinuityId);
+      const endTimeline = this.timelines.find(t => t.id === branch.endContinuityId);
+      
+      if (!startTimeline || !endTimeline) continue;
+      
+      // Calculate screen coordinates for start point using position
+      const chapterSegmentWidth = this.gridSize * this.zoom;
+      const startScreenX = startTimeline.x * this.zoom + this.offsetX + 
+                          (branch.startPosition * chapterSegmentWidth);
+      const startScreenY = startTimeline.y * this.zoom + this.offsetY;
+      
+      // Calculate screen coordinates for end point using position
+      const endScreenX = endTimeline.x * this.zoom + this.offsetX + 
+                        (branch.endPosition * chapterSegmentWidth);
+      const endScreenY = endTimeline.y * this.zoom + this.offsetY;
+      
+      // Calculate control points for S-curve (backwards S: exit right, approach from left)
+      const horizontalOffset = 100 * this.zoom;
+      const cp1x = startScreenX + horizontalOffset;
+      const cp1y = startScreenY;
+      const cp2x = endScreenX - horizontalOffset;
+      const cp2y = endScreenY;
+      
+      // Check if click is near the curve by sampling points along the bezier
+      let minDist = Infinity;
+      const samples = 50; // Number of points to sample along the curve
+      
+      for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
+        const mt = 1 - t;
+        
+        // Cubic bezier formula: B(t) = (1-t)³P0 + 3(1-t)²t P1 + 3(1-t)t²P2 + t³P3
+        const curveX = mt*mt*mt*startScreenX + 3*mt*mt*t*cp1x + 3*mt*t*t*cp2x + t*t*t*endScreenX;
+        const curveY = mt*mt*mt*startScreenY + 3*mt*mt*t*cp1y + 3*mt*t*t*cp2y + t*t*t*endScreenY;
+        
+        const dx = mouseX - curveX;
+        const dy = mouseY - curveY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        minDist = Math.min(minDist, dist);
+        
+        // Early exit if we found a close point
+        if (minDist <= hitRadius) {
+          return branch.id;
+        }
+      }
+    }
+    
     return null;
   }
 
@@ -1726,11 +2183,11 @@ class MenuSystem {
   private canvasHeight: number = 0; // Will be set when rendering
   private cachedMenuWidth: number = 150; // Cache the measured menu width
   
-  private options: { id: string; label: string }[] = [
-    { id: 'new-timeline', label: 'New Timeline' },
-    { id: 'new-chapter', label: 'New Chapter' },
-    { id: 'arc-mode', label: 'Toggle Arc Mode' },
-    { id: 'new-branch', label: 'New Branch' }
+  private options: { id: string; label: string; keybind?: string }[] = [
+    { id: 'new-timeline', label: 'New Timeline', keybind: 'Shift + T' },
+    { id: 'new-chapter', label: 'New Chapter', keybind: 'Shift + C' },
+    { id: 'arc-mode', label: 'Toggle Arc Mode', keybind: 'Shift + A' },
+    { id: 'new-branch', label: 'New Branch', keybind: 'Shift + B' }
   ];
   
   // Button and menu dimensions
@@ -1833,6 +2290,14 @@ class MenuSystem {
       this.options.forEach(option => {
         const metrics = ctx.measureText(option.label);
         maxTextWidth = Math.max(maxTextWidth, metrics.width);
+        
+        // Also measure keybind if present (it's usually shorter, but check anyway)
+        if (option.keybind) {
+          ctx.font = '11px sans-serif';
+          const keybindMetrics = ctx.measureText(option.keybind);
+          maxTextWidth = Math.max(maxTextWidth, keybindMetrics.width);
+          ctx.font = 'bold 14px sans-serif'; // Reset to label font
+        }
       });
       this.cachedMenuWidth = maxTextWidth + this.optionPadding * 2 + this.menuMargin * 2;
     }
@@ -1965,10 +2430,22 @@ class MenuSystem {
         
         // Draw text
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 14px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(option.label, layout.buttonX + layout.currentWidth / 2, optionY + this.optionHeight / 2);
+        
+        // If there's a keybind, shift the label up and add keybind below
+        if (option.keybind) {
+          ctx.font = 'bold 14px sans-serif';
+          ctx.fillText(option.label, layout.buttonX + layout.currentWidth / 2, optionY + this.optionHeight / 2 - 7);
+          
+          ctx.font = '11px sans-serif';
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+          ctx.fillText(option.keybind, layout.buttonX + layout.currentWidth / 2, optionY + this.optionHeight / 2 + 8);
+        } else {
+          // No keybind, center the label
+          ctx.font = 'bold 14px sans-serif';
+          ctx.fillText(option.label, layout.buttonX + layout.currentWidth / 2, optionY + this.optionHeight / 2);
+        }
       });
     }
   }

@@ -2,7 +2,7 @@
  * Main application state management
  */
 
-import { Project, Continuity, Chapter, Arc } from './types';
+import { Project, Continuity, Chapter, Arc, Branch } from './types';
 import { LocalStorageManager } from './fileManager';
 
 type StateChangeListener = (state: AppState) => void;
@@ -11,6 +11,7 @@ export interface AppState {
   currentProject: Project | null;
   selectedContinuityId: string | null;
   selectedChapterId: string | null;
+  selectedBranchId: string | null;
   arcMode: boolean;
 }
 
@@ -23,6 +24,7 @@ export class AppStateManager {
       currentProject: null,
       selectedContinuityId: null,
       selectedChapterId: null,
+      selectedBranchId: null,
       arcMode: false,
     };
   }
@@ -44,6 +46,13 @@ export class AppStateManager {
 
   selectChapter(chapterId: string | null): void {
     this.state.selectedChapterId = chapterId;
+    this.state.selectedBranchId = null; // Reset branch selection when selecting a chapter
+    this.notifyListeners();
+  }
+
+  selectBranch(branchId: string | null): void {
+    this.state.selectedBranchId = branchId;
+    this.state.selectedChapterId = null; // Reset chapter selection when selecting a branch
     this.notifyListeners();
   }
 
@@ -357,6 +366,80 @@ export class AppStateManager {
   updateProject(updates: Partial<Project>): void {
     if (this.state.currentProject) {
       Object.assign(this.state.currentProject, updates);
+      this.state.currentProject.modified = Date.now();
+      this.notifyListeners();
+    }
+  }
+
+  /**
+   * Add a branch to the project. The branch will be added to both continuities involved.
+   * @param branch - The branch to add
+   */
+  addBranch(branch: Branch): void {
+    if (this.state.currentProject) {
+      // Find both continuities involved
+      const startContinuity = this.state.currentProject.continuities.find(
+        c => c.id === branch.startContinuityId
+      );
+      const endContinuity = this.state.currentProject.continuities.find(
+        c => c.id === branch.endContinuityId
+      );
+
+      // Add branch to start continuity
+      if (startContinuity) {
+        if (!startContinuity.branches) startContinuity.branches = [];
+        startContinuity.branches.push(branch);
+      }
+
+      // Also add to end continuity if it's different (avoid duplicates)
+      if (endContinuity && endContinuity.id !== startContinuity?.id) {
+        if (!endContinuity.branches) endContinuity.branches = [];
+        endContinuity.branches.push(branch);
+      }
+
+      this.state.currentProject.modified = Date.now();
+      this.notifyListeners();
+    }
+  }
+
+  /**
+   * Update a branch's properties
+   * @param branchId - The ID of the branch to update
+   * @param updates - Partial branch updates
+   */
+  updateBranch(branchId: string, updates: Partial<Branch>): void {
+    if (this.state.currentProject) {
+      // Find the branch in any continuity
+      for (const continuity of this.state.currentProject.continuities) {
+        if (!continuity.branches) continue; // Skip if no branches array
+        const branch = continuity.branches.find(b => b.id === branchId);
+        if (branch) {
+          Object.assign(branch, updates);
+          this.state.currentProject.modified = Date.now();
+          this.notifyListeners();
+          return;
+        }
+      }
+    }
+  }
+
+  /**
+   * Remove a branch from all continuities
+   * @param branchId - The ID of the branch to remove
+   */
+  removeBranch(branchId: string): void {
+    if (this.state.currentProject) {
+      // Remove from all continuities
+      for (const continuity of this.state.currentProject.continuities) {
+        if (continuity.branches) {
+          continuity.branches = continuity.branches.filter(b => b.id !== branchId);
+        }
+      }
+
+      if (this.state.selectedBranchId === branchId) {
+        this.state.selectedBranchId = null;
+      }
+
       this.state.currentProject.modified = Date.now();
       this.notifyListeners();
     }
