@@ -577,6 +577,15 @@ function initializeApp() {
       const project = LocalStorageManager.loadProject(firstProjectId);
       if (project) {
         stateManager.setProject(project);
+        // Center on the first timeline after loading from localStorage
+        // Use setTimeout to defer until after renderUI is called by the subscriber
+        if (project.continuities.length > 0) {
+          setTimeout(() => {
+            if (canvasInstance) {
+              canvasInstance.centerOnTimeline(project.continuities[0].id);
+            }
+          }, 0);
+        }
       }
     }
   }
