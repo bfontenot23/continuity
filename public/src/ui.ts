@@ -8,27 +8,99 @@ import { AppStateManager } from './state';
 export class UIComponents {
   static createHeader(project: Project | null, onNewProject: () => void, onExport: () => void, onImport: (file: File) => void, onExportPNG: () => void = () => {}): HTMLElement {
     const header = document.createElement('header');
-    header.className = 'header';
+    header.className = 'topbar';
     header.innerHTML = `
-      <div class="header-content">
-        <div class="header-title">
-          <h1>Continuity</h1>
-          <p>Story Planner & Timeline Manager</p>
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-copy">
+            <span class="brand-title">Continuity</span>
+            <span class="brand-subtitle">Story Planner & Timeline Manager</span>
+          </div>
         </div>
-        <div class="header-actions">
-          <button id="new-project-btn" class="btn btn-primary">New Project</button>
+        <div class="topbar-actions" role="group" aria-label="Project actions">
+          <button id="new-project-btn" class="btn btn-primary" title="Start a new project">New</button>
           ${project ? `
-            <button id="export-png-btn" class="btn btn-secondary">Export as PNG</button>
-            <button id="export-btn" class="btn btn-secondary">Export</button>
-            <button id="import-btn" class="btn btn-secondary">Import</button>
+            <button id="import-btn" class="btn btn-ghost" title="Import a .cty file">Import</button>
+            <div class="export-menu">
+              <button id="export-menu-btn" class="btn btn-ghost" title="Export project" aria-haspopup="true" aria-expanded="false">
+                Export ▾
+              </button>
+              <div class="export-menu-list" role="menu">
+                <button class="export-option" data-type="png" role="menuitem">PNG image</button>
+                <button class="export-option" data-type="cty" role="menuitem">.cty project</button>
+              </div>
+            </div>
           ` : ''}
         </div>
       </div>
     `;
 
     header.querySelector('#new-project-btn')?.addEventListener('click', onNewProject);
-    header.querySelector('#export-png-btn')?.addEventListener('click', onExportPNG);
-    header.querySelector('#export-btn')?.addEventListener('click', onExport);
+
+    const exportMenu = header.querySelector('.export-menu') as HTMLElement | null;
+    const exportMenuBtn = header.querySelector('#export-menu-btn') as HTMLButtonElement | null;
+    const exportMenuList = header.querySelector('.export-menu-list') as HTMLElement | null;
+
+    let docClickHandler: ((e: MouseEvent) => void) | null = null;
+    let keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+
+    const closeMenu = () => {
+      if (!exportMenu) return;
+      exportMenu.classList.remove('open');
+      exportMenuBtn?.setAttribute('aria-expanded', 'false');
+      if (docClickHandler) {
+        document.removeEventListener('click', docClickHandler);
+        docClickHandler = null;
+      }
+      if (keydownHandler) {
+        document.removeEventListener('keydown', keydownHandler);
+        keydownHandler = null;
+      }
+    };
+
+    const openMenu = () => {
+      if (!exportMenu) return;
+      exportMenu.classList.add('open');
+      exportMenuBtn?.setAttribute('aria-expanded', 'true');
+      docClickHandler = (e: MouseEvent) => {
+        if (exportMenu && !exportMenu.contains(e.target as Node)) {
+          closeMenu();
+        }
+      };
+      keydownHandler = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          closeMenu();
+        }
+      };
+      document.addEventListener('click', docClickHandler);
+      document.addEventListener('keydown', keydownHandler);
+    };
+
+    const toggleMenu = () => {
+      if (!exportMenu) return;
+      if (exportMenu.classList.contains('open')) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
+    };
+
+    exportMenuBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMenu();
+    });
+
+    exportMenuList?.querySelectorAll('.export-option').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const type = (btn as HTMLElement).getAttribute('data-type');
+        closeMenu();
+        if (type === 'png') {
+          onExportPNG();
+        } else {
+          onExport();
+        }
+      });
+    });
     
     const importBtn = header.querySelector('#import-btn') as HTMLButtonElement;
     if (importBtn) {
@@ -576,34 +648,149 @@ export class UIComponents {
         height: 100vh;
       }
 
-      .header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 1rem 2rem;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      .topbar {
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 0.65rem 1rem;
+        border-bottom: 1px solid #1f2937;
+        position: sticky;
+        top: 0;
+        z-index: 5;
       }
 
-      .header-content {
-        max-width: 1600px;
+      .topbar-inner {
+        max-width: 1400px;
         margin: 0 auto;
         display: flex;
-        justify-content: space-between;
         align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
       }
 
-      .header-title h1 {
-        font-size: 1.8rem;
-        margin-bottom: 0.25rem;
-      }
-
-      .header-title p {
-        font-size: 0.9rem;
-        opacity: 0.9;
-      }
-
-      .header-actions {
+      .brand {
         display: flex;
-        gap: 1rem;
+        align-items: center;
+        gap: 0.4rem;
+        min-width: 0;
+      }
+
+      .brand-copy {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.1;
+      }
+
+      .brand-title {
+        font-weight: 700;
+        font-size: 1rem;
+        letter-spacing: 0.01em;
+      }
+
+      .brand-subtitle {
+        font-size: 0.75rem;
+        color: #94a3b8;
+      }
+
+      .topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-left: auto;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .topbar-actions .btn {
+        padding: 0.4rem 0.9rem;
+        border-radius: 999px;
+        font-weight: 600;
+      }
+
+      .export-menu {
+        position: relative;
+      }
+
+      .export-menu-list {
+        position: absolute;
+        right: 0;
+        top: calc(100% + 6px);
+        background: #0b1220;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        min-width: 180px;
+        padding: 0.25rem;
+        display: none;
+        z-index: 10;
+      }
+
+      .export-menu.open .export-menu-list {
+        display: block;
+      }
+
+      .export-option {
+        width: 100%;
+        text-align: left;
+        padding: 0.55rem 0.75rem;
+        background: transparent;
+        border: none;
+        color: #e2e8f0;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .export-option:hover {
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .topbar .btn-primary {
+        background: #22d3ee;
+        color: #0f172a;
+        font-weight: 700;
+      }
+
+      .topbar .btn-primary:hover {
+        background: #06b6d4;
+      }
+
+      .btn-ghost {
+        background: rgba(255, 255, 255, 0.08);
+        color: #e2e8f0;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+      }
+
+      .btn-ghost:hover {
+        background: rgba(255, 255, 255, 0.16);
+        border-color: rgba(255, 255, 255, 0.22);
+      }
+
+      @media (max-width: 720px) {
+        .topbar-inner {
+          align-items: flex-start;
+        }
+
+        .brand {
+          width: 100%;
+          justify-content: space-between;
+        }
+
+        .brand-copy {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .topbar-actions {
+          width: 100%;
+          margin-left: 0;
+          justify-content: flex-start;
+          overflow-x: auto;
+          padding-bottom: 0.25rem;
+        }
+
+        .topbar-actions::-webkit-scrollbar {
+          display: none;
+        }
       }
 
       .btn {
@@ -1137,18 +1324,6 @@ export class UIComponents {
         .nav-add-btn {
           order: 3;
           align-self: flex-start;
-        }
-      }
-
-      @media (max-width: 768px) {
-        .header-content {
-          flex-direction: column;
-          gap: 1rem;
-        }
-
-        .header-actions {
-          width: 100%;
-          justify-content: center;
         }
       }
 
