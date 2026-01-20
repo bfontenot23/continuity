@@ -1,39 +1,21 @@
-# Continuity - Story Planner & Timeline Manager
+# Continuity
 
-A web app for planning interconnected stories with branching continuities, arcs, and chapters. Perfect for writers managing complex narrative structures with multiple timelines and story branches.
+A lightweight, client-side story planning tool for writers managing complex narratives with multiple timelines and branching plots. Organize chapters into continuities, arcs, and interconnected timelines—all saved locally in your browser.
 
-## Features
+## Key Features
 
-- **Multiple Continuities**: Create and manage multiple story timelines within a single project
-- **Visual Timelines**: See chapters organized into arcs with a clean visual interface
-- **Chapter Management**: Add, edit, and organize chapters with titles, descriptions, and content
-- **Arc Organization**: Group chapters into story arcs for better structure
-- **Custom File Format**: Save projects as `.cty` files (JSON-based format)
-- **Import/Export**: Easily import existing projects and export your work
-- **Local Storage**: Auto-saves progress to browser local storage
-- **Responsive Design**: Works on desktop and tablet devices
-- **No Database Required**: All data stored locally or in .cty files
+- **Multiple Timelines** – Create distinct story timelines and alternate narratives within one project
+- **Interactive Canvas** – Drag-and-drop chapters, timelines, and annotations with pan and zoom controls
+- **Arc Visualization** – Toggle arc mode to see chapters grouped by narrative arcs with color coding
+- **Rich Chapter Details** – Customizable title, timestamp, description, content, and grid width
+- **Branches** – Visual connections between timelines showing narrative splits and merges
+- **Annotations** – Add textboxes (markdown), lines, and visual connectors anywhere on canvas
+- **Export Options** – Save as `.cty` files (JSON) or PNG images for backup and sharing
+- **Keyboard Shortcuts** – Fast workflow with `Shift + [key]` shortcuts for all major actions
+- **Auto-save** – Automatic local storage persistence—never lose your work
+- **Lightweight** – Pure TypeScript, no frameworks or heavy dependencies
 
-## Project Structure
-
-```
-continuity/
-├── src/
-│   ├── main.ts          # Application entry point
-│   ├── types.ts         # Core data models and interfaces
-│   ├── state.ts         # State management system
-│   ├── fileManager.ts   # File import/export and storage
-│   └── ui.ts            # UI component builders and styling
-├── public/
-│   └── index.html       # Main HTML template
-├── firebase.json        # Firebase hosting configuration
-├── vite.config.ts       # Vite build configuration
-├── tsconfig.json        # TypeScript configuration
-├── package.json         # Dependencies and scripts
-└── example-project.cty  # Example project file
-```
-
-## Quick Start
+## Getting Started
 
 ### Installation
 
@@ -41,193 +23,256 @@ continuity/
 npm install
 ```
 
-### Development
-
-Run the development server:
+### Run Development Server
 
 ```bash
 npm run dev
 ```
 
-This starts a Vite dev server on `http://localhost:3000` with hot module reloading.
+Opens automatically at `http://localhost:3000` with hot reload enabled.
 
-### Building
-
-Build for production:
+### Build for Production
 
 ```bash
 npm run build
 ```
 
-Output is generated in `public/dist/`
+Outputs optimized build to `public/dist/`.
 
-### Type Checking
-
-Check for TypeScript errors:
+### Type Check
 
 ```bash
 npm run type-check
 ```
 
-## Usage
+Validates TypeScript without emitting files.
 
-### Creating a Project
+## How to Use
 
-1. Click "New Project" to create a new project
-2. Give your project a title
-3. Click "New Continuity" to add a story timeline
-4. Add chapters to your continuity
-5. Organize chapters into arcs
+### Create a New Project
+1. Click **New Project** and enter a title
+2. A project opens with one default continuity/timeline
+3. Start adding chapters, arcs, and annotations
 
-### Working with Continuities
+### Work with Timelines (Continuities)
+Each continuity represents an independent timeline or narrative branch:
+- **Add** – Press `Shift + T` or click menu button to create a new timeline
+- **Edit** – Double-click a timeline name to edit title and description
+- **Move** – Click and drag a timeline to reposition it on the canvas
+- **Color** – Each timeline gets a unique color for easy identification
 
-Each continuity represents an independent or branching timeline:
+### Add Chapters
+Chapters are individual story beats on your timeline:
+- **Insert Mode** – Press `Shift + C` to toggle chapter insertion mode
+- **Place Chapter** – While in insertion mode, click between two existing chapters to insert
+- **Edit** – Double-click any chapter to edit title, description, content, and properties
+- **Timestamp** – Automatically assigned to maintain story order
+- **Grid Length** – Set custom chapter width (0 = auto-calculate from title length)
+- **Arc Assignment** – Assign chapters to arcs via the chapter editor
+- **Reorder** – Drag chapters left/right on the timeline to change order
 
-- **Create**: Click the "+" button to add a new continuity
-- **Edit**: Click on a continuity to select it
-- **Delete**: (Right-click or delete button in continuity options)
-- **Color**: Each continuity has a unique color for easy visual identification
+### Organize with Arcs
+Arcs group adjacent chapters into narrative sections (e.g., "Act 1", "Rising Action"):
+- **Toggle Arc Mode** – Press `Shift + A` to show/hide arc visualization
+- **Create** – Use the "Add Arc" button in the sidebar
+- **Assign Chapters** – Select an arc in the chapter editor
+- **Reorder** – In arc mode, drag arc groups to rearrange
+- **Color-Coded** – Each arc appears as a colored segment on the timeline
 
-### Managing Chapters
+### Canvas Navigation
+- **Pan** – Click and drag the background to move around
+- **Zoom** – Scroll to zoom in/out
+- **Insert Mode** – `Shift + C` for chapters, `Shift + A` for arcs, `Shift + B` for branches
 
-Chapters are the individual story beats:
+### Add Annotations
+**Textboxes** – Free-floating text notes with markdown support:
+- **Add** – Press `Shift + S` to create a textbox at canvas center
+- **Edit** – Double-click a textbox to edit content, size, and alignment
+- **Move** – Click and drag to reposition anywhere on canvas
+- **Resize** – Drag corner/edge handles to resize
 
-- **Add**: Click "Add Chapter" to create a new chapter
-- **Edit**: Select a chapter to edit its properties
-- **Timeline Position**: Use the timestamp field to order chapters non-linearly
-- **Arcs**: Assign chapters to different story arcs
-- **Content**: Write and store chapter content directly in the app
+**Lines** – Visual connectors between timeline elements:
+- **Add** – Press `Shift + D` to toggle line insertion mode
+- **Draw** – Click two points on the grid to create a line
+- **Edit** – Double-click a line to change style (solid/dashed) and endpoints (dot/arrow/none)
+- **Move** – Drag line endpoints to reposition
 
-### Managing Arcs
+**Branches** – Connect chapters across different timelines:
+- **Add** – Press `Shift + B` to toggle branch insertion mode
+- **Draw** – Click a point on one timeline, then a point on another timeline
+- **Edit** – Double-click a branch to change style and description
+- **Visual** – Shows narrative branches and alternate timeline connections
 
-Arcs are visual groupings of chapters (e.g., "Introduction", "Rising Action", "Climax"):
+### Export Your Work
+Click **Export** to access export options:
+- **`.cty` file** – JSON format for backup, sharing, or version control
+- **PNG image** – Export the current canvas view as an image
 
-- **Add**: Click "Add Arc" to create a new arc within a continuity
-- **Organize**: Chapters are displayed under their parent arc
-- **Custom Names**: Give arcs meaningful names for your story structure
+**Import an existing project:**
+1. Click **Import** on the header
+2. Select a `.cty` or `.json` file
+3. The project loads and becomes your active workspace
 
-### Exporting & Importing
+### Keyboard Shortcuts
+- `Shift + T` – New Timeline
+- `Shift + C` – Toggle Chapter Insertion Mode
+- `Shift + A` – Toggle Arc Mode
+- `Shift + B` – Toggle Branch Insertion Mode
+- `Shift + S` – Add Textbox
+- `Shift + D` – Toggle Line Insertion Mode
 
-**Export**: Click "Export" to download your project as a `.cty` file
-- Format: JSON with `.cty` extension
-- Contains: All continuities, chapters, arcs, and metadata
-- Use: Backup, share with collaborators, or version control
-
-**Import**: Click "Import" to load a previously saved `.cty` file
-- Supports: `.cty` and `.json` files
-- Effect: Loads the project and makes it the active project
-
-### Viewing Timeline
-
-The main timeline view shows:
-
-- All arcs in the selected continuity
-- All chapters organized by arc
-- Visual chapter cards with title and timeline position
-- Click any chapter to edit its details in the right panel
-
-### Editor Panel
-
-The right panel allows editing selected chapter details:
-
-- **Title**: Chapter name
-- **Timeline Position**: Numeric position for ordering
-- **Description**: Brief summary of the chapter
-- **Content**: Full chapter content/notes
+### Auto-save & Storage
+- Every change instantly saves to your browser's local storage
+- Closing and reopening the app restores your work
+- **Backup important projects** by exporting as `.cty` files
+- To clear all local storage, use browser DevTools → Application → Local Storage
 
 ## Data Model
 
 ### Project
+The root container for your entire story project:
 ```typescript
 {
-  id: string;
-  title: string;
-  description?: string;
-  created: number;        // Unix timestamp
-  modified: number;       // Unix timestamp
-  continuities: Continuity[];
+  id: string;                    // Unique identifier
+  title: string;                 // Project name
+  description?: string;          // Optional summary
+  created: number;               // Unix timestamp
+  modified: number;              // Unix timestamp
+  continuities: Continuity[];    // Array of timelines
+  textboxes: Textbox[];          // Free-floating annotations
+  lines: Line[];                 // Visual connector lines
 }
 ```
 
 ### Continuity
+An independent timeline or narrative branch within your project:
 ```typescript
 {
   id: string;
-  name: string;
+  name: string;                  // Timeline name
   description?: string;
-  color?: string;         // Hex color code
-  chapters: Chapter[];
-  arcs: Arc[];
-  branches: ContinuityBranch[];  // Future feature
+  color?: string;                // Hex color for UI
+  x?: number;                    // Canvas X position
+  y?: number;                    // Canvas Y position
+  chapters: Chapter[];           // Story beats (ordered by timestamp)
+  arcs: Arc[];                   // Narrative sections
+  branches: Branch[];            // Connections to other timelines
 }
 ```
 
 ### Chapter
+A single story beat or scene:
 ```typescript
 {
   id: string;
   title: string;
   description?: string;
-  content?: string;
-  timestamp: number;      // Timeline position
-  arcId: string;          // Reference to parent arc
-  order: number;
+  content?: string;              // Full chapter text
+  timestamp: number;             // Order in timeline (integer)
+  arcId?: string;                // Reference to parent arc (optional)
+  gridLength?: number;           // Custom width on canvas (0 = auto)
 }
 ```
 
 ### Arc
+A narrative section organizing chapters visually:
 ```typescript
 {
   id: string;
-  name: string;
+  name: string;                  // Arc title (e.g., "Act 2")
   description?: string;
-  order: number;          // Visual order
+  color: string;                 // Hex color for this arc
+  order: number;                 // Visual order
+}
+```
+
+### Textbox
+Free-floating text annotation with markdown support:
+```typescript
+{
+  id: string;
+  content: string;               // Markdown content
+  x: number;                     // World X position
+  y: number;                     // World Y position
+  width: number;                 // Width in pixels
+  height: number;                // Height in pixels
+  fontSize: number;              // Font size in pixels
+  alignX?: 'left' | 'center' | 'right';
+  alignY?: 'top' | 'middle' | 'bottom';
+}
+```
+
+### Line
+Visual connector line with grid-locked positions:
+```typescript
+{
+  id: string;
+  gridX1: number;                // Start grid X position
+  gridY1: number;                // Start grid Y position
+  gridX2: number;                // End grid X position
+  gridY2: number;                // End grid Y position
+  lineStyle?: 'solid' | 'dashed';
+  startEndpointStyle?: 'dot' | 'arrow' | 'none';
+  endEndpointStyle?: 'dot' | 'arrow' | 'none';
+}
+```
+
+### Branch
+Connection between chapters across different timelines:
+```typescript
+{
+  id: string;
+  description?: string;
+  lineStyle?: 'solid' | 'dashed';
+  startEndpointStyle?: 'dot' | 'arrow' | 'none';
+  endEndpointStyle?: 'dot' | 'arrow' | 'none';
+  startContinuityId: string;     // Source timeline
+  startChapterId?: string;       // Source chapter (for recalc)
+  startPosition: number;         // Grid position (0-based)
+  endContinuityId: string;       // Target timeline
+  endChapterId?: string;         // Target chapter (for recalc)
+  endPosition: number;           // Grid position (0-based)
 }
 ```
 
 ## .cty File Format
 
-`.cty` files are JSON documents containing the complete project structure:
+`.cty` files are JSON-serialized `Project` objects with a `.cty` extension:
 
 ```json
 {
-  "id": "project-id",
-  "title": "Project Title",
+  "id": "proj_abc123xyz",
+  "title": "My Epic Novel",
+  "description": "A story of adventure",
   "created": 1705056000000,
-  "modified": 1705056000000,
-  "continuities": [...]
+  "modified": 1705140000000,
+  "continuities": [
+    {
+      "id": "cont_xyz789abc",
+      "name": "Main Timeline",
+      "color": "#FF6B6B",
+      "chapters": [...],
+      "arcs": [...]
+    }
+  ]
 }
 ```
 
-To manually create a `.cty` file:
-1. Create a JSON file with valid Project structure
-2. Rename with `.cty` extension
-3. Import into the app
+**To create a `.cty` file manually:**
+1. Create valid JSON following the `Project` schema
+2. Save with `.cty` extension (or `.json` also works)
+3. Import into the app via the Import button
 
 ## Deployment
 
-This project is configured for Firebase Hosting:
-
-### Prerequisites
-- Firebase CLI: `npm install -g firebase-tools`
-- Firebase project initialized
-
-### Deploy
+Deploy to Firebase Hosting:
 
 ```bash
 npm run build
 firebase deploy
 ```
 
-Your app will be live at your Firebase hosting URL.
-
-## Local Storage
-
-The app automatically saves your current project to browser local storage. To manually manage:
-
-- **Auto-save**: Happens on every change
-- **Clear**: Use browser dev tools to clear local storage
-- **Export**: Always export important projects as `.cty` files
+Requires Firebase CLI and a configured Firebase project.
 
 ## Browser Support
 
@@ -236,49 +281,44 @@ The app automatically saves your current project to browser local storage. To ma
 - Safari 14+
 - Edge 90+
 
-## Future Features
-
-- **Branch & Merge Visualization**: Visual representation of story branches and merge points
-- **Collaboration**: Real-time collaborative editing
-- **Publishing**: Export to multiple formats (PDF, EPUB, etc.)
-- **Analytics**: Statistics about your project (word counts, chapter distribution)
-- **Templates**: Pre-built project templates and story structures
-- **Version History**: Track changes over time
-- **Advanced Search**: Find chapters by content or metadata
-
 ## Technical Stack
 
-- **Frontend**: TypeScript, Vite
-- **Styling**: CSS with responsive design
-- **Storage**: Browser Local Storage + .cty files
-- **Deployment**: Firebase Hosting
-- **Build Tool**: Vite 5.x
 - **Language**: TypeScript 5.x
+- **Build Tool**: Vite 5.x
+- **Styling**: CSS with responsive design
+- **Storage**: Browser local storage + `.cty` files
+- **Deployment**: Firebase Hosting
+- **Architecture**: Pure TypeScript with listener-based state management (no frameworks)
 
-## Development Notes
+## Project Structure
 
-- No external UI frameworks; custom CSS for simplicity and control
-- Modular architecture with separation of concerns
-- Type-safe with strict TypeScript configuration
-- Responsive design that adapts to screen sizes
+```
+public/
+├── src/
+│   ├── main.ts         # Bootstrap and initialization
+│   ├── types.ts        # Data models (Project, Continuity, Chapter, Arc)
+│   ├── state.ts        # Centralized state manager with listeners
+│   ├── ui.ts           # DOM builders and event handlers
+│   ├── canvas.ts       # Interactive timeline canvas (pan/zoom/drag)
+│   └── fileManager.ts  # Import/export and localStorage management
+├── index.html          # Entry HTML
+└── dist/               # Build output (generated)
+```
+
+## Development
+
+- **No frameworks** – Custom CSS and DOM manipulation for simplicity and control
+- **Type-safe** – Strict TypeScript configuration with `noUnusedLocals` and `noUnusedParameters`
+- **Modular** – Clear separation between state, UI, and file management
+- **Canvas-based** – HTML5 canvas for interactive timeline visualization
 
 ## License
 
-This project is open source and available for personal and commercial use.
+Open source and available for personal and commercial use.
 
-## Contributing
+## Support & Troubleshooting
 
-To contribute to this project:
-
-1. Create a branch for your feature
-2. Make your changes
-3. Test thoroughly
-4. Submit a pull request with a description of changes
-
-## Support
-
-For issues or questions:
-1. Check the example project file
-2. Review the data model in `src/types.ts`
-3. Check browser console for error messages
-4. Verify `.cty` file format is valid JSON
+- **Lost work?** Check local storage in browser DevTools → Application → Local Storage
+- **Import issues?** Verify `.cty` file format is valid JSON matching the Project schema
+- **Canvas not responding?** Try clearing browser cache and reloading
+- **TypeScript errors?** Run `npm run type-check` to validate the codebase
