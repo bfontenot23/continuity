@@ -25,6 +25,8 @@ export interface Branch {
   id: string;
   description?: string;
   lineStyle?: 'solid' | 'dashed'; // Default: solid
+  startEndpointStyle?: 'dot' | 'arrow' | 'none'; // Default: dot
+  endEndpointStyle?: 'dot' | 'arrow' | 'none'; // Default: dot
   // Start point: reference to a continuity and chapter this branch starts from
   startContinuityId: string;
   startChapterId?: string; // Optional: chapter ID this branch is anchored to (for layout recalculation)
@@ -47,6 +49,16 @@ export interface Textbox {
   alignY?: 'top' | 'middle' | 'bottom'; // Vertical alignment (default: top)
 }
 
+export interface Line {
+  id: string;
+  gridX1: number; // Starting grid X position (locked to grid)
+  gridY1: number; // Starting grid Y position (locked to grid)
+  gridX2: number; // Ending grid X position (locked to grid)
+  gridY2: number; // Ending grid Y position (locked to grid)
+  lineStyle?: 'solid' | 'dashed'; // Default: solid
+  startEndpointStyle?: 'dot' | 'arrow' | 'none'; // Default: dot
+  endEndpointStyle?: 'dot' | 'arrow' | 'none'; // Default: dot
+}
 
 export interface Continuity {
   id: string;
@@ -68,6 +80,7 @@ export interface Project {
   modified: number;
   continuities: Continuity[];
   textboxes: Textbox[]; // Free-floating textboxes with markdown support
+  lines: Line[]; // Free-floating lines with grid-locked positions
 }
 
 // Helper functions for working with these models
@@ -80,6 +93,7 @@ export function createProject(title: string): Project {
     modified: now,
     continuities: [],
     textboxes: [],
+    lines: [],
   };
 }
 
@@ -167,6 +181,9 @@ export function createBranch(
     startPosition,
     endContinuityId,
     endPosition,
+    lineStyle: 'solid',
+    startEndpointStyle: 'dot',
+    endEndpointStyle: 'dot',
   };
 }
 
@@ -187,6 +204,24 @@ export function createTextbox(
     fontSize,
     alignX: 'left',
     alignY: 'top',
+  };
+}
+
+export function createLine(
+  gridX1: number,
+  gridY1: number,
+  gridX2: number,
+  gridY2: number
+): Line {
+  return {
+    id: generateId(),
+    gridX1,
+    gridY1,
+    gridX2,
+    gridY2,
+    lineStyle: 'solid',
+    startEndpointStyle: 'dot',
+    endEndpointStyle: 'dot',
   };
 }
 

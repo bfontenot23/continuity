@@ -2,7 +2,7 @@
  * Main application state management
  */
 
-import { Project, Continuity, Chapter, Arc, Branch, Textbox } from './types';
+import { Project, Continuity, Chapter, Arc, Branch, Textbox, Line } from './types';
 import { LocalStorageManager } from './fileManager';
 
 type StateChangeListener = (state: AppState) => void;
@@ -13,6 +13,7 @@ export interface AppState {
   selectedChapterId: string | null;
   selectedBranchId: string | null;
   selectedTextboxId: string | null;
+  selectedLineId: string | null;
   arcMode: boolean;
 }
 
@@ -27,6 +28,7 @@ export class AppStateManager {
       selectedChapterId: null,
       selectedBranchId: null,
       selectedTextboxId: null,
+      selectedLineId: null,
       arcMode: false,
     };
   }
@@ -64,6 +66,15 @@ export class AppStateManager {
     this.state.selectedTextboxId = textboxId;
     this.state.selectedChapterId = null; // Reset chapter selection
     this.state.selectedBranchId = null; // Reset branch selection
+    this.state.selectedLineId = null; // Reset line selection
+    this.notifyListeners();
+  }
+
+  selectLine(lineId: string | null): void {
+    this.state.selectedLineId = lineId;
+    this.state.selectedChapterId = null; // Reset chapter selection
+    this.state.selectedBranchId = null; // Reset branch selection
+    this.state.selectedTextboxId = null; // Reset textbox selection
     this.notifyListeners();
   }
 
@@ -264,9 +275,19 @@ export class AppStateManager {
 
         // Remove chapter from current position
         sortedChapters.splice(currentIndex, 1);
+
+        // Adjust target index when dragging a chapter forward in the list because removing
+        // the original position shifts later indices left by one.
+        let adjustedTargetIndex = targetIndex;
+        if (adjustedTargetIndex > currentIndex) {
+          adjustedTargetIndex -= 1;
+        }
+
+        // Clamp to valid bounds to avoid splicing out of range
+        adjustedTargetIndex = Math.max(0, Math.min(sortedChapters.length, adjustedTargetIndex));
         
         // Insert at target position
-        sortedChapters.splice(targetIndex, 0, chapter);
+        sortedChapters.splice(adjustedTargetIndex, 0, chapter);
         
         // Reassign timestamps as whole numbers starting from 1
         sortedChapters.forEach((ch, index) => {
@@ -569,6 +590,52 @@ export class AppStateManager {
       this.state.currentProject.textboxes = this.state.currentProject.textboxes.filter(t => t.id !== textboxId);
       if (this.state.selectedTextboxId === textboxId) {
         this.state.selectedTextboxId = null;
+      }
+      this.state.currentProject.modified = Date.now();
+      this.notifyListeners();
+    }
+  }
+
+  /**
+   * Add a line to the project
+   * @param line - The line to add
+   */
+  addLine(line: Line): void {
+    if (this.state.currentProject) {
+      if (!this.state.currentProject.lines) {
+        this.state.currentProject.lines = [];
+      }
+      this.state.currentProject.lines.push(line);
+      this.state.currentProject.modified = Date.now();
+      this.notifyListeners();
+    }
+  }
+
+  /**
+   * Update a line's properties
+   * @param lineId - The ID of the line to update
+   * @param updates - Partial line updates
+   */
+  updateLine(lineId: string, updates: Partial<Line>): void {
+    if (this.state.currentProject && this.state.currentProject.lines) {
+      const line = this.state.currentProject.lines.find(l => l.id === lineId);
+      if (line) {
+        Object.assign(line, updates);
+        this.state.currentProject.modified = Date.now();
+        this.notifyListeners();
+      }
+    }
+  }
+
+  /**
+   * Remove a line from the project
+   * @param lineId - The ID of the line to remove
+   */
+  removeLine(lineId: string): void {
+    if (this.state.currentProject && this.state.currentProject.lines) {
+      this.state.currentProject.lines = this.state.currentProject.lines.filter(l => l.id !== lineId);
+      if (this.state.selectedLineId === lineId) {
+        this.state.selectedLineId = null;
       }
       this.state.currentProject.modified = Date.now();
       this.notifyListeners();

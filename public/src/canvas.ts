@@ -112,6 +112,25 @@ export class TimelineCanvas {
   private resizeOriginalWidth: number = 0;
   private resizeOriginalHeight: number = 0;
   private hoveredTextboxId: string | null = null; // For hover state
+
+  // Lines
+  private lines: any[] = []; // Will store all lines for rendering
+  private lineInsertionMode: boolean = false;
+  private lineFirstPoint: { gridX: number; gridY: number } | null = null;
+  private lineHoveredPoint: { gridX: number; gridY: number } | null = null;
+  private isDraggingLine: boolean = false;
+  private draggedLineId: string | null = null;
+  private isDraggingLineEndpoint: boolean = false;
+  private draggedLineEndpoint: 'start' | 'end' | null = null;
+  private pendingDragLineId: string | null = null;
+  private pendingDragLineEndpointLineId: string | null = null;
+  private pendingDragLineEndpoint: 'start' | 'end' | null = null;
+  private lineDragStartX: number = 0;
+  private lineDragStartY: number = 0;
+  private lineOriginalX1: number = 0;
+  private lineOriginalY1: number = 0;
+  private lineOriginalX2: number = 0;
+  private lineOriginalY2: number = 0;
   
   // Grid settings
   private gridSize: number = 50; // In pixels
@@ -131,10 +150,12 @@ export class TimelineCanvas {
   private onAddChapter: ((timelineId: string, position: number) => void) | null = null;
   private onAddBranch: ((startTimelineId: string, startPosition: number, endTimelineId: string, endPosition: number) => void) | null = null;
   private onAddTextbox: ((x: number, y: number) => void) | null = null;
+  private onAddLine: ((gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
   private onEditChapter: ((chapterId: string) => void) | null = null;
   private onEditBranch: ((branchId: string) => void) | null = null;
   private onEditTextbox: ((textboxId: string) => void) | null = null;
+  private onEditLine: ((lineId: string) => void) | null = null;
   private onReorderChapter: ((timelineId: string, chapterId: string, newPosition: number) => void) | null = null;
   private onTimelineHovered: ((timelineId: string | null, position: 'above' | 'below') => void) | null = null;
   private onTimelineMoved: ((timelineId: string, x: number, y: number) => void) | null = null;
@@ -143,6 +164,7 @@ export class TimelineCanvas {
   private onBackgroundClick: (() => void) | null = null;
   private onTextboxMoved: ((textboxId: string, x: number, y: number) => void) | null = null;
   private onTextboxResized: ((textboxId: string, width: number, height: number) => void) | null = null;
+  private onLineMoved: ((lineId: string, gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private getStateChaptersForTimeline: ((timelineId: string) => any[]) | null = null;
   private hoveredInsertZone: { timelineId: string | null; position: 'above' | 'below' } = { timelineId: null, position: 'below' };
 
@@ -250,6 +272,11 @@ export class TimelineCanvas {
             this.branchInsertionMode = !this.branchInsertionMode;
             this.branchFirstPoint = null;
             this.branchHoveredPoint = { timelineId: null, position: -1 };
+          } else if (clickedOptionId === 'new-line') {
+            // Toggle line insertion mode
+            this.lineInsertionMode = !this.lineInsertionMode;
+            this.lineFirstPoint = null;
+            this.lineHoveredPoint = null;
           } else if (clickedOptionId === 'arc-mode' && this.onToggleArcMode) {
             // Toggle arc mode
             this.onToggleArcMode();
@@ -330,6 +357,38 @@ export class TimelineCanvas {
           return;
         }
 
+        // Handle line insertion mode
+        if (this.lineInsertionMode) {
+          // Get grid position from mouse coords
+          const gridX = Math.round(((mouseX - this.offsetX) / this.zoom) / this.gridSize);
+          const gridY = Math.round(((mouseY - this.offsetY) / this.zoom) / this.gridSize);
+
+          if (!this.lineFirstPoint) {
+            // First point selected
+            this.lineFirstPoint = { gridX, gridY };
+            this.render();
+          } else {
+            // Second point selected - create line
+            if (gridX !== this.lineFirstPoint.gridX || gridY !== this.lineFirstPoint.gridY) {
+              // Valid: different points
+              if (this.onAddLine) {
+                this.onAddLine(
+                  this.lineFirstPoint.gridX,
+                  this.lineFirstPoint.gridY,
+                  gridX,
+                  gridY
+                );
+              }
+              this.lineInsertionMode = false;
+              this.lineFirstPoint = null;
+              this.render();
+            } else {
+              // Invalid: same point - do nothing, wait for different second point
+            }
+          }
+          return;
+        }
+
         // Check for double-click on timeline title
         const now = Date.now();
         const lastClickTime = (this.canvas as any).lastClickTime || 0;
@@ -348,6 +407,9 @@ export class TimelineCanvas {
             clearTimeout(this.dragDelayTimer);
             this.dragDelayTimer = null;
             this.pendingDragTimelineId = null;
+            this.pendingDragLineId = null;
+            this.pendingDragLineEndpointLineId = null;
+            this.pendingDragLineEndpoint = null;
           }
           
           const clickedElement = this.getClickedTimelineOrChapter(mouseX, mouseY);
@@ -377,6 +439,13 @@ export class TimelineCanvas {
           const textboxClickResult = this.getClickedTextboxElement(mouseX, mouseY);
           if (textboxClickResult && this.onEditTextbox) {
             this.onEditTextbox(textboxClickResult.textboxId);
+            return;
+          }
+
+          // Check for double-click on a line
+          const clickedLineId = this.getClickedLine(mouseX, mouseY);
+          if (clickedLineId && this.onEditLine) {
+            this.onEditLine(clickedLineId);
             return;
           }
         }
@@ -557,6 +626,140 @@ export class TimelineCanvas {
           }
         }
 
+        // Check if clicking on line body (but not endpoint)
+        const lineClickResult = this.getClickedLine(mouseX, mouseY);
+        if (lineClickResult && !this.getClickedLineEndpoint(mouseX, mouseY)) {
+          // Start line body drag
+          const line = this.lines.find(l => l.id === lineClickResult);
+          if (line) {
+            this.pendingDragLineId = line.id;
+            this.lineDragStartX = mouseX;
+            this.lineDragStartY = mouseY;
+            this.lineOriginalX1 = line.gridX1;
+            this.lineOriginalY1 = line.gridY1;
+            this.lineOriginalX2 = line.gridX2;
+            this.lineOriginalY2 = line.gridY2;
+
+            // Delay drag start to allow double-click detection
+            this.dragDelayTimer = window.setTimeout(() => {
+              if (this.pendingDragLineId === line.id) {
+                this.isDraggingLine = true;
+                this.draggedLineId = line.id;
+                this.canvas.style.cursor = 'move';
+                
+                // Add document-level event listeners for dragging
+                const handleDocumentMouseMove = (e: MouseEvent) => {
+                  const rect = this.canvas.getBoundingClientRect();
+                  const newMouseX = e.clientX - rect.left;
+                  const newMouseY = e.clientY - rect.top;
+                  
+                  const deltaX = newMouseX - this.lineDragStartX;
+                  const deltaY = newMouseY - this.lineDragStartY;
+                  
+                  const draggedLine = this.lines.find(l => l.id === this.draggedLineId);
+                  if (draggedLine) {
+                    const gridSize = this.gridSize;
+                    const deltaGridX = Math.round(deltaX / this.zoom / gridSize);
+                    const deltaGridY = Math.round(deltaY / this.zoom / gridSize);
+                    
+                    draggedLine.gridX1 = this.lineOriginalX1 + deltaGridX;
+                    draggedLine.gridY1 = this.lineOriginalY1 + deltaGridY;
+                    draggedLine.gridX2 = this.lineOriginalX2 + deltaGridX;
+                    draggedLine.gridY2 = this.lineOriginalY2 + deltaGridY;
+                    this.render();
+                  }
+                };
+                
+                const handleDocumentMouseUp = () => {
+                  document.removeEventListener('mousemove', handleDocumentMouseMove);
+                  document.removeEventListener('mouseup', handleDocumentMouseUp);
+                  
+                  if (this.isDraggingLine && this.draggedLineId && this.onLineMoved) {
+                    const draggedLine = this.lines.find(l => l.id === this.draggedLineId);
+                    if (draggedLine) {
+                      this.onLineMoved(draggedLine.id, draggedLine.gridX1, draggedLine.gridY1, draggedLine.gridX2, draggedLine.gridY2);
+                    }
+                  }
+                  
+                  this.isDraggingLine = false;
+                  this.draggedLineId = null;
+                  this.canvas.style.cursor = 'grab';
+                };
+                
+                document.addEventListener('mousemove', handleDocumentMouseMove);
+                document.addEventListener('mouseup', handleDocumentMouseUp);
+              }
+              this.dragDelayTimer = null;
+            }, 150);
+          }
+          return;
+        }
+
+        // Check if clicking on line endpoint
+        const lineEndpointClickResult = this.getClickedLineEndpoint(mouseX, mouseY);
+        if (lineEndpointClickResult) {
+          // Start line endpoint drag with delay
+          this.pendingDragLineEndpointLineId = lineEndpointClickResult.lineId;
+          this.pendingDragLineEndpoint = lineEndpointClickResult.endpoint;
+
+          this.dragDelayTimer = window.setTimeout(() => {
+            if (
+              this.pendingDragLineEndpointLineId === lineEndpointClickResult.lineId &&
+              this.pendingDragLineEndpoint === lineEndpointClickResult.endpoint
+            ) {
+              this.isDraggingLineEndpoint = true;
+              this.draggedLineId = lineEndpointClickResult.lineId;
+              this.draggedLineEndpoint = lineEndpointClickResult.endpoint;
+              this.canvas.style.cursor = 'move';
+              
+              // Add document-level event listeners for dragging
+              const handleDocumentMouseMove = (e: MouseEvent) => {
+                const rect = this.canvas.getBoundingClientRect();
+                const newMouseX = e.clientX - rect.left;
+                const newMouseY = e.clientY - rect.top;
+                
+                const line = this.lines.find(l => l.id === this.draggedLineId);
+                if (line && this.draggedLineEndpoint) {
+                  const gridSize = this.gridSize;
+                  const newGridX = Math.round(((newMouseX - this.offsetX) / this.zoom) / gridSize);
+                  const newGridY = Math.round(((newMouseY - this.offsetY) / this.zoom) / gridSize);
+                  
+                  if (this.draggedLineEndpoint === 'start') {
+                    line.gridX1 = newGridX;
+                    line.gridY1 = newGridY;
+                  } else {
+                    line.gridX2 = newGridX;
+                    line.gridY2 = newGridY;
+                  }
+                  this.render();
+                }
+              };
+              
+              const handleDocumentMouseUp = () => {
+                document.removeEventListener('mousemove', handleDocumentMouseMove);
+                document.removeEventListener('mouseup', handleDocumentMouseUp);
+                
+                if (this.isDraggingLineEndpoint && this.draggedLineId && this.onLineMoved) {
+                  const line = this.lines.find(l => l.id === this.draggedLineId);
+                  if (line) {
+                    this.onLineMoved(line.id, line.gridX1, line.gridY1, line.gridX2, line.gridY2);
+                  }
+                }
+                
+                this.isDraggingLineEndpoint = false;
+                this.draggedLineId = null;
+                this.draggedLineEndpoint = null;
+                this.canvas.style.cursor = 'grab';
+              };
+              
+              document.addEventListener('mousemove', handleDocumentMouseMove);
+              document.addEventListener('mouseup', handleDocumentMouseUp);
+            }
+            this.dragDelayTimer = null;
+          }, 150);
+          return;
+        }
+
         // Start panning
         this.isDragging = true;
         this.dragStartX = e.clientX;
@@ -604,6 +807,15 @@ export class TimelineCanvas {
         } else {
           this.branchHoveredPoint = { timelineId: null, position: -1 };
         }
+        this.render();
+      }
+
+      // Update line hover tracking
+      if (this.lineInsertionMode) {
+        const gridSize = this.gridSize;
+        const gridX = Math.round(((mouseX - this.offsetX) / this.zoom) / gridSize);
+        const gridY = Math.round(((mouseY - this.offsetY) / this.zoom) / gridSize);
+        this.lineHoveredPoint = { gridX, gridY };
         this.render();
       }
 
@@ -769,6 +981,9 @@ export class TimelineCanvas {
         this.pendingDragChapterId = null;
         this.pendingDragArcId = null;
         this.pendingDragTextboxId = null;
+        this.pendingDragLineId = null;
+        this.pendingDragLineEndpointLineId = null;
+        this.pendingDragLineEndpoint = null;
       }
       
       // Save timeline position if we were dragging a timeline
@@ -1099,8 +1314,25 @@ export class TimelineCanvas {
     this.onTextboxResized = callback;
   }
 
+  setOnAddLine(callback: (gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void): void {
+    this.onAddLine = callback;
+  }
+
+  setOnEditLine(callback: (lineId: string) => void): void {
+    this.onEditLine = callback;
+  }
+
+  setOnLineMoved(callback: (lineId: string, gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void): void {
+    this.onLineMoved = callback;
+  }
+
   setTextboxes(textboxes: any[]): void {
     this.textboxes = textboxes;
+    this.render();
+  }
+
+  setLines(lines: any[]): void {
+    this.lines = lines;
     this.render();
   }
 
@@ -1114,6 +1346,13 @@ export class TimelineCanvas {
     this.branchInsertionMode = !this.branchInsertionMode;
     this.branchFirstPoint = null;
     this.branchHoveredPoint = { timelineId: null, position: -1 };
+    this.render();
+  }
+
+  toggleLineInsertionMode(): void {
+    this.lineInsertionMode = !this.lineInsertionMode;
+    this.lineFirstPoint = null;
+    this.lineHoveredPoint = null;
     this.render();
   }
 
@@ -1246,6 +1485,9 @@ export class TimelineCanvas {
     // Draw timelines
     this.drawTimelines();
 
+    // Draw lines
+    this.drawLines();
+
     // Draw textboxes
     this.drawTextboxes();
 
@@ -1334,6 +1576,22 @@ export class TimelineCanvas {
     return false;
   }
 
+  /**
+   * Check if a branch ends at the start of a timeline (first insertion point)
+   * If so, the head should be hidden and replaced by the branch as the "head"
+   */
+  private shouldHideHeadForTimeline(timelineId: string): boolean {
+    // Check if any branch ends at position 1 (first insertion point, after Head which is at 0-1)
+    for (const branch of this.branches) {
+      if (branch.endContinuityId === timelineId && 
+          Math.round(branch.endPosition) === 1) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   private drawTimelinesNormalMode(): void {
     this.timelines.forEach(timeline => {
       const screenX = timeline.x * this.zoom + this.offsetX;
@@ -1342,6 +1600,19 @@ export class TimelineCanvas {
       
       // Check if we should hide the tail (branch starts at end)
       const shouldHideTailNormal = this.shouldHideTailForTimeline(timeline.id);
+      
+      // Check if we should hide the head (branch ends at start)
+      const shouldHideHeadNormal = this.shouldHideHeadForTimeline(timeline.id);
+      
+      // Calculate line start position
+      let lineStartX = screenX;
+      if (shouldHideHeadNormal && timeline.chapters && timeline.chapters.length > 0) {
+        // Start from first real chapter instead of timeline start
+        const firstRealChapter = timeline.chapters.find(ch => ch.title !== 'Head');
+        if (firstRealChapter) {
+          lineStartX = screenX + (firstRealChapter.x * chapterSegmentWidth);
+        }
+      }
       
       // Calculate line end position based on last chapter
       let lineEndX = screenX + (timeline.width * this.zoom);
@@ -1363,7 +1634,7 @@ export class TimelineCanvas {
       this.ctx.strokeStyle = '#333333';
       this.ctx.lineWidth = 3;
       this.ctx.beginPath();
-      this.ctx.moveTo(screenX, screenY);
+      this.ctx.moveTo(lineStartX, screenY);
       this.ctx.lineTo(lineEndX, screenY);
       this.ctx.stroke();
 
@@ -1506,7 +1777,9 @@ export class TimelineCanvas {
 
       // Draw horizontal timeline line segments colored by arc
       // First, draw the head section in black (from timeline start to first chapter or tail)
-      if (timeline.chapters && timeline.chapters.length > 0) {
+      // But skip if a branch ends at the start position
+      const shouldHideHeadArcMode = this.shouldHideHeadForTimeline(timeline.id);
+      if (!shouldHideHeadArcMode && timeline.chapters && timeline.chapters.length > 0) {
         const firstRealChapter = timeline.chapters.find(ch => ch.title !== 'Head' && ch.title !== 'Tail');
         if (firstRealChapter) {
           const headEndX = screenX + (firstRealChapter.x * chapterSegmentWidth);
@@ -1991,16 +2264,13 @@ export class TimelineCanvas {
       
       // Reset line dash to avoid affecting other drawings
       this.ctx.setLineDash([]);
-      
-      // Draw start and end points
-      this.ctx.fillStyle = '#000000';
-      this.ctx.beginPath();
-      this.ctx.arc(startScreenX, startScreenY, 5, 0, Math.PI * 2);
-      this.ctx.fill();
-      
-      this.ctx.beginPath();
-      this.ctx.arc(endScreenX, endScreenY, 5, 0, Math.PI * 2);
-      this.ctx.fill();
+
+      // Draw endpoints with styles (default to dot)
+      const startStyle = branch.startEndpointStyle || 'dot';
+      const endStyle = branch.endEndpointStyle || 'dot';
+      // For branches, arrows always point to the right; use a fake left neighbor to set angle
+      this.drawEndpoint(startScreenX, startScreenY, startStyle, startScreenX - 1, startScreenY);
+      this.drawEndpoint(endScreenX, endScreenY, endStyle, endScreenX - 1, endScreenY);
     });
   }
 
@@ -2505,38 +2775,22 @@ export class TimelineCanvas {
       element.style.left = (screenX * this.zoom) + 'px';
       element.style.top = (screenY * this.zoom) + 'px';
       element.style.width = textbox.width + 'px';
+      element.style.height = textbox.height + 'px';
       element.style.transform = `scale(${this.zoom})`;
       element.style.transformOrigin = 'top left';
       // Font size stays at model value - CSS scale handles zoom uniformly
       element.style.fontSize = textbox.fontSize + 'px';
       element.style.lineHeight = (textbox.fontSize * 1.4) + 'px';
-      // Use minHeight to allow content to expand vertically without clipping
-      element.style.height = 'auto';
-      element.style.minHeight = textbox.height + 'px';
       
-      // Apply text alignment
+      // Apply text alignment (horizontal) and fixed vertical alignment via flexbox
       const textAlign = textbox.alignX || 'left';
       element.style.textAlign = textAlign;
-      
-      // Apply vertical alignment (only when content doesn't overflow)
       const verticalAlign = textbox.alignY || 'top';
-      // Use normal display to allow content to flow and auto-expand
-      element.style.display = 'block';
-      // Only apply text alignment for horizontal positioning
-      if (verticalAlign === 'middle' || verticalAlign === 'bottom') {
-        // For these alignments, use padding to position text
-        const contentHeight = element.scrollHeight;
-        const availableHeight = textbox.height - 16; // subtract padding
-        if (contentHeight < availableHeight) {
-          if (verticalAlign === 'middle') {
-            const topPadding = (availableHeight - contentHeight) / 2;
-            element.style.paddingTop = topPadding + 'px';
-          } else if (verticalAlign === 'bottom') {
-            const topPadding = availableHeight - contentHeight;
-            element.style.paddingTop = topPadding + 'px';
-          }
-        }
-      }
+      element.style.display = 'flex';
+      element.style.flexDirection = 'column';
+      element.style.justifyContent = verticalAlign === 'middle' ? 'center' : verticalAlign === 'bottom' ? 'flex-end' : 'flex-start';
+      element.style.paddingTop = '8px';
+      element.style.paddingBottom = '8px';
       
       // Update content if changed - preserve blank lines while supporting markdown
       const processContent = () => {
@@ -2569,6 +2823,140 @@ export class TimelineCanvas {
       } else {
         element.style.borderColor = 'transparent';
       }
+    }
+  }
+
+  private drawLines(): void {
+    // Draw all lines
+    for (const line of this.lines) {
+      const screenX1 = line.gridX1 * this.gridSize * this.zoom + this.offsetX;
+      const screenY1 = line.gridY1 * this.gridSize * this.zoom + this.offsetY;
+      const screenX2 = line.gridX2 * this.gridSize * this.zoom + this.offsetX;
+      const screenY2 = line.gridY2 * this.gridSize * this.zoom + this.offsetY;
+
+      // Draw line (always gray, no hover color)
+      this.ctx.strokeStyle = '#666666';
+      this.ctx.lineWidth = 2;
+      
+      if (line.lineStyle === 'dashed') {
+        this.ctx.setLineDash([5, 5]);
+      } else {
+        this.ctx.setLineDash([]);
+      }
+
+      this.ctx.beginPath();
+      this.ctx.moveTo(screenX1, screenY1);
+      this.ctx.lineTo(screenX2, screenY2);
+      this.ctx.stroke();
+      this.ctx.setLineDash([]);
+
+      // Draw endpoints with their styles
+      this.drawEndpoint(screenX1, screenY1, line.startEndpointStyle || 'dot', screenX2, screenY2);
+      this.drawEndpoint(screenX2, screenY2, line.endEndpointStyle || 'dot', screenX1, screenY1);
+    }
+
+    // Draw line insertion mode indicators
+    if (this.lineInsertionMode) {
+      this.drawLineInsertionIndicators();
+    }
+  }
+
+  private drawEndpoint(x: number, y: number, style: 'dot' | 'arrow' | 'none', otherX?: number, otherY?: number): void {
+    const size = 6;
+    this.ctx.fillStyle = '#333333';
+
+    if (style === 'none') {
+      return; // Don't draw anything
+    } else if (style === 'dot') {
+      // Draw a filled circle
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, size, 0, Math.PI * 2);
+      this.ctx.fill();
+    } else if (style === 'arrow' && otherX !== undefined && otherY !== undefined) {
+      // Draw an arrow pointing away from the other point (outward from the line)
+      const angle = Math.atan2(y - otherY, x - otherX);
+      const arrowSize = 12; // Match timeline tail arrow
+      const halfWidth = arrowSize / 2;
+
+      const dirX = Math.cos(angle);
+      const dirY = Math.sin(angle);
+
+      // Tip is forward from the endpoint
+      const tipX = x + dirX * arrowSize;
+      const tipY = y + dirY * arrowSize;
+
+      // Base center sits arrowSize back from tip (at the endpoint)
+      const baseCenterX = tipX - dirX * arrowSize;
+      const baseCenterY = tipY - dirY * arrowSize;
+
+      // Perpendicular vector for width
+      const perpX = -dirY;
+      const perpY = dirX;
+
+      const baseX1 = baseCenterX + perpX * halfWidth;
+      const baseY1 = baseCenterY + perpY * halfWidth;
+      const baseX2 = baseCenterX - perpX * halfWidth;
+      const baseY2 = baseCenterY - perpY * halfWidth;
+
+      // Draw filled triangle
+      this.ctx.beginPath();
+      this.ctx.moveTo(tipX, tipY);
+      this.ctx.lineTo(baseX1, baseY1);
+      this.ctx.lineTo(baseX2, baseY2);
+      this.ctx.closePath();
+      this.ctx.fill();
+    }
+  }
+
+  private drawLineInsertionIndicators(): void {
+    // Draw grid points and preview line if needed
+    const gridSize = this.gridSize;
+    const pointRadius = 4;
+    const previewColor = 'rgba(100, 150, 255, 0.6)';
+    const normalColor = 'rgba(150, 150, 150, 0.3)';
+
+    // Draw all possible grid points
+    const startX = Math.floor((-this.offsetX) / (gridSize * this.zoom)) * gridSize;
+    const endX = startX + Math.ceil((this.canvas.width / this.zoom + gridSize));
+    
+    const startY = Math.floor((-this.offsetY) / (gridSize * this.zoom)) * gridSize;
+    const endY = startY + Math.ceil((this.canvas.height / this.zoom + gridSize));
+
+    for (let x = startX; x < endX; x += gridSize) {
+      for (let y = startY; y < endY; y += gridSize) {
+        const screenX = x * this.zoom + this.offsetX;
+        const screenY = y * this.zoom + this.offsetY;
+
+        // Highlight the hovered point
+        if (this.lineHoveredPoint && this.lineHoveredPoint.gridX === x / gridSize && this.lineHoveredPoint.gridY === y / gridSize) {
+          this.ctx.fillStyle = previewColor;
+          this.ctx.beginPath();
+          this.ctx.arc(screenX, screenY, pointRadius + 2, 0, Math.PI * 2);
+          this.ctx.fill();
+        } else {
+          this.ctx.fillStyle = normalColor;
+          this.ctx.beginPath();
+          this.ctx.arc(screenX, screenY, pointRadius, 0, Math.PI * 2);
+          this.ctx.fill();
+        }
+      }
+    }
+
+    // Draw preview line if first point is selected
+    if (this.lineFirstPoint && this.lineHoveredPoint) {
+      const screenX1 = this.lineFirstPoint.gridX * gridSize * this.zoom + this.offsetX;
+      const screenY1 = this.lineFirstPoint.gridY * gridSize * this.zoom + this.offsetY;
+      const screenX2 = this.lineHoveredPoint.gridX * gridSize * this.zoom + this.offsetX;
+      const screenY2 = this.lineHoveredPoint.gridY * gridSize * this.zoom + this.offsetY;
+
+      this.ctx.strokeStyle = previewColor;
+      this.ctx.lineWidth = 2;
+      this.ctx.setLineDash([5, 5]);
+      this.ctx.beginPath();
+      this.ctx.moveTo(screenX1, screenY1);
+      this.ctx.lineTo(screenX2, screenY2);
+      this.ctx.stroke();
+      this.ctx.setLineDash([]);
     }
   }
 
@@ -2879,6 +3267,80 @@ export class TimelineCanvas {
     return null;
   }
 
+  private getClickedLine(mouseX: number, mouseY: number): string | null {
+    const hitRadius = 8; // Pixels
+    
+    for (const line of this.lines) {
+      const screenX1 = line.gridX1 * this.gridSize * this.zoom + this.offsetX;
+      const screenY1 = line.gridY1 * this.gridSize * this.zoom + this.offsetY;
+      const screenX2 = line.gridX2 * this.gridSize * this.zoom + this.offsetX;
+      const screenY2 = line.gridY2 * this.gridSize * this.zoom + this.offsetY;
+
+      // Check distance from point to line segment
+      const distance = this.distanceToLineSegment(mouseX, mouseY, screenX1, screenY1, screenX2, screenY2);
+      if (distance <= hitRadius) {
+        return line.id;
+      }
+    }
+
+    return null;
+  }
+
+  private getClickedLineEndpoint(mouseX: number, mouseY: number): { lineId: string; endpoint: 'start' | 'end' } | null {
+    const hitRadius = 10; // Pixels
+    
+    for (const line of this.lines) {
+      const screenX1 = line.gridX1 * this.gridSize * this.zoom + this.offsetX;
+      const screenY1 = line.gridY1 * this.gridSize * this.zoom + this.offsetY;
+      const screenX2 = line.gridX2 * this.gridSize * this.zoom + this.offsetX;
+      const screenY2 = line.gridY2 * this.gridSize * this.zoom + this.offsetY;
+
+      // Check distance from mouse to start point
+      const dist1 = Math.sqrt(Math.pow(mouseX - screenX1, 2) + Math.pow(mouseY - screenY1, 2));
+      if (dist1 <= hitRadius) {
+        return { lineId: line.id, endpoint: 'start' };
+      }
+
+      // Check distance from mouse to end point
+      const dist2 = Math.sqrt(Math.pow(mouseX - screenX2, 2) + Math.pow(mouseY - screenY2, 2));
+      if (dist2 <= hitRadius) {
+        return { lineId: line.id, endpoint: 'end' };
+      }
+    }
+
+    return null;
+  }
+
+  private distanceToLineSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+    const A = px - x1;
+    const B = py - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+    
+    if (lenSq !== 0) param = dot / lenSq;
+
+    let xx, yy;
+
+    if (param < 0) {
+      xx = x1;
+      yy = y1;
+    } else if (param > 1) {
+      xx = x2;
+      yy = y2;
+    } else {
+      xx = x1 + param * C;
+      yy = y1 + param * D;
+    }
+
+    const dx = px - xx;
+    const dy = py - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
   private getResizeCursor(handle: string): string {
     switch (handle) {
       case 'n':
@@ -2919,7 +3381,8 @@ class MenuSystem {
     { id: 'new-chapter', label: 'New Chapter', keybind: 'Shift + C' },
     { id: 'arc-mode', label: 'Toggle Arc Mode', keybind: 'Shift + A' },
     { id: 'new-branch', label: 'New Branch', keybind: 'Shift + B' },
-    { id: 'new-textbox', label: 'New Textbox', keybind: 'Shift + S' }
+    { id: 'new-textbox', label: 'New Textbox', keybind: 'Shift + S' },
+    { id: 'new-line', label: 'New Line', keybind: 'Shift + D' }
   ];
   
   // Button and menu dimensions

@@ -1273,8 +1273,22 @@ export class UIComponents {
   }
 
   static createEditSidebar(
-    type: 'timeline' | 'chapter' | 'branch' | 'textbox',
-    data: { id: string; name?: string; title?: string; description?: string; gridLength?: number; arcId?: string; lineStyle?: string; content?: string; fontSize?: number; alignX?: 'left' | 'center' | 'right'; alignY?: 'top' | 'middle' | 'bottom' },
+    type: 'timeline' | 'chapter' | 'branch' | 'textbox' | 'line',
+    data: {
+      id: string;
+      name?: string;
+      title?: string;
+      description?: string;
+      gridLength?: number;
+      arcId?: string;
+      lineStyle?: string;
+      startEndpointStyle?: 'dot' | 'arrow' | 'none';
+      endEndpointStyle?: 'dot' | 'arrow' | 'none';
+      content?: string;
+      fontSize?: number;
+      alignX?: 'left' | 'center' | 'right';
+      alignY?: 'top' | 'middle' | 'bottom';
+    },
     continuity: Continuity | null,
     stateManager: AppStateManager,
     onClose: () => void,
@@ -1287,14 +1301,14 @@ export class UIComponents {
     header.className = 'edit-sidebar-header';
     
     const title = document.createElement('h3');
-    title.textContent = type === 'timeline' ? 'Edit Timeline' : type === 'chapter' ? 'Edit Chapter' : type === 'branch' ? 'Edit Branch' : 'Edit Textbox';
+    title.textContent = type === 'timeline' ? 'Edit Timeline' : type === 'chapter' ? 'Edit Chapter' : type === 'branch' ? 'Edit Branch' : type === 'textbox' ? 'Edit Textbox' : 'Edit Line';
     header.appendChild(title);
 
     const closeBtn = document.createElement('button');
     closeBtn.className = 'close-btn';
     closeBtn.innerHTML = '×';
     closeBtn.addEventListener('click', () => {
-      // Save before closing for textboxes
+      // Save before closing for textboxes and lines
       if (type === 'textbox') {
         const contentTextarea = content.querySelector('#textbox-content-input') as HTMLTextAreaElement;
         const fontSizeInput = content.querySelector('#textbox-fontsize-input') as HTMLInputElement;
@@ -1306,6 +1320,17 @@ export class UIComponents {
         }
         if (Object.keys(updates).length > 0) {
           stateManager.updateTextbox(data.id, updates);
+        }
+      } else if (type === 'line') {
+        const lineStyleSelect = content.querySelector('#line-linestyle-select') as HTMLSelectElement;
+        const startEndpointSelect = content.querySelector('#line-start-endpoint-select') as HTMLSelectElement;
+        const endEndpointSelect = content.querySelector('#line-end-endpoint-select') as HTMLSelectElement;
+        const updates: any = {};
+        if (lineStyleSelect) updates.lineStyle = lineStyleSelect.value;
+        if (startEndpointSelect) updates.startEndpointStyle = startEndpointSelect.value as 'dot' | 'arrow' | 'none';
+        if (endEndpointSelect) updates.endEndpointStyle = endEndpointSelect.value as 'dot' | 'arrow' | 'none';
+        if (Object.keys(updates).length > 0) {
+          stateManager.updateLine(data.id, updates);
         }
       }
       onClose();
@@ -1764,6 +1789,149 @@ export class UIComponents {
       lineStyleSelect.addEventListener('change', () => {
         stateManager.updateBranch(data.id, { lineStyle: lineStyleSelect.value as 'solid' | 'dashed' });
       });
+
+      // Start endpoint style
+      const branchStartEndpointGroup = document.createElement('div');
+      branchStartEndpointGroup.className = 'form-group';
+      const branchStartEndpointLabel = document.createElement('label');
+      branchStartEndpointLabel.textContent = 'Start Endpoint';
+      branchStartEndpointGroup.appendChild(branchStartEndpointLabel);
+
+      const branchStartEndpointSelect = document.createElement('select');
+      branchStartEndpointSelect.id = 'branch-start-endpoint-select';
+      ['dot', 'arrow', 'none'].forEach(style => {
+        const option = document.createElement('option');
+        option.value = style;
+        option.textContent = style.charAt(0).toUpperCase() + style.slice(1);
+        if ((data as any).startEndpointStyle === style || (style === 'dot' && !(data as any).startEndpointStyle)) {
+          option.selected = true;
+        }
+        branchStartEndpointSelect.appendChild(option);
+      });
+      branchStartEndpointGroup.appendChild(branchStartEndpointSelect);
+      content.appendChild(branchStartEndpointGroup);
+
+      branchStartEndpointSelect.addEventListener('change', () => {
+        stateManager.updateBranch(data.id, { startEndpointStyle: branchStartEndpointSelect.value as 'dot' | 'arrow' | 'none' });
+      });
+
+      // End endpoint style
+      const branchEndEndpointGroup = document.createElement('div');
+      branchEndEndpointGroup.className = 'form-group';
+      const branchEndEndpointLabel = document.createElement('label');
+      branchEndEndpointLabel.textContent = 'End Endpoint';
+      branchEndEndpointGroup.appendChild(branchEndEndpointLabel);
+
+      const branchEndEndpointSelect = document.createElement('select');
+      branchEndEndpointSelect.id = 'branch-end-endpoint-select';
+      ['dot', 'arrow', 'none'].forEach(style => {
+        const option = document.createElement('option');
+        option.value = style;
+        option.textContent = style.charAt(0).toUpperCase() + style.slice(1);
+        if ((data as any).endEndpointStyle === style || (style === 'dot' && !(data as any).endEndpointStyle)) {
+          option.selected = true;
+        }
+        branchEndEndpointSelect.appendChild(option);
+      });
+      branchEndEndpointGroup.appendChild(branchEndEndpointSelect);
+      content.appendChild(branchEndEndpointGroup);
+
+      branchEndEndpointSelect.addEventListener('change', () => {
+        stateManager.updateBranch(data.id, { endEndpointStyle: branchEndEndpointSelect.value as 'dot' | 'arrow' | 'none' });
+      });
+    } else if (type === 'line') {
+      // Line editing - line style and endpoint styles
+      const lineStyleGroup = document.createElement('div');
+      lineStyleGroup.className = 'form-group';
+      
+      const lineStyleLabel = document.createElement('label');
+      lineStyleLabel.textContent = 'Line Style';
+      lineStyleGroup.appendChild(lineStyleLabel);
+
+      const lineStyleSelect = document.createElement('select');
+      lineStyleSelect.id = 'line-linestyle-select';
+      
+      const solidOption = document.createElement('option');
+      solidOption.value = 'solid';
+      solidOption.textContent = 'Solid';
+      if ((data.lineStyle || 'solid') === 'solid') {
+        solidOption.selected = true;
+      }
+      lineStyleSelect.appendChild(solidOption);
+      
+      const dashedOption = document.createElement('option');
+      dashedOption.value = 'dashed';
+      dashedOption.textContent = 'Dashed';
+      if (data.lineStyle === 'dashed') {
+        dashedOption.selected = true;
+      }
+      lineStyleSelect.appendChild(dashedOption);
+
+      lineStyleGroup.appendChild(lineStyleSelect);
+      content.appendChild(lineStyleGroup);
+
+      // Autosave on change
+      lineStyleSelect.addEventListener('change', () => {
+        stateManager.updateLine(data.id, { lineStyle: lineStyleSelect.value as 'solid' | 'dashed' });
+      });
+
+      // Start endpoint style
+      const startEndpointGroup = document.createElement('div');
+      startEndpointGroup.className = 'form-group';
+      
+      const startEndpointLabel = document.createElement('label');
+      startEndpointLabel.textContent = 'Start Endpoint';
+      startEndpointGroup.appendChild(startEndpointLabel);
+
+      const startEndpointSelect = document.createElement('select');
+      startEndpointSelect.id = 'line-start-endpoint-select';
+      
+      ['dot', 'arrow', 'none'].forEach(style => {
+        const option = document.createElement('option');
+        option.value = style;
+        option.textContent = style.charAt(0).toUpperCase() + style.slice(1);
+        if ((data as any).startEndpointStyle === style || (style === 'dot' && !(data as any).startEndpointStyle)) {
+          option.selected = true;
+        }
+        startEndpointSelect.appendChild(option);
+      });
+
+      startEndpointGroup.appendChild(startEndpointSelect);
+      content.appendChild(startEndpointGroup);
+
+      // Autosave on change
+      startEndpointSelect.addEventListener('change', () => {
+        stateManager.updateLine(data.id, { startEndpointStyle: startEndpointSelect.value as 'dot' | 'arrow' | 'none' });
+      });
+
+      // End endpoint style
+      const endEndpointGroup = document.createElement('div');
+      endEndpointGroup.className = 'form-group';
+      
+      const endEndpointLabel = document.createElement('label');
+      endEndpointLabel.textContent = 'End Endpoint';
+      endEndpointGroup.appendChild(endEndpointLabel);
+
+      const endEndpointSelect = document.createElement('select');
+      endEndpointSelect.id = 'line-end-endpoint-select';
+      
+      ['dot', 'arrow', 'none'].forEach(style => {
+        const option = document.createElement('option');
+        option.value = style;
+        option.textContent = style.charAt(0).toUpperCase() + style.slice(1);
+        if ((data as any).endEndpointStyle === style || (style === 'dot' && !(data as any).endEndpointStyle)) {
+          option.selected = true;
+        }
+        endEndpointSelect.appendChild(option);
+      });
+
+      endEndpointGroup.appendChild(endEndpointSelect);
+      content.appendChild(endEndpointGroup);
+
+      // Autosave on change
+      endEndpointSelect.addEventListener('change', () => {
+        stateManager.updateLine(data.id, { endEndpointStyle: endEndpointSelect.value as 'dot' | 'arrow' | 'none' });
+      });
     }
 
     sidebar.appendChild(content);
@@ -1804,9 +1972,13 @@ export class UIComponents {
         // Branch saving
         const descTextarea = content.querySelector('#branch-desc-input') as HTMLTextAreaElement;
         const lineStyleSelect = content.querySelector('#branch-linestyle-select') as HTMLSelectElement;
+        const startEndpointSelect = content.querySelector('#branch-start-endpoint-select') as HTMLSelectElement;
+        const endEndpointSelect = content.querySelector('#branch-end-endpoint-select') as HTMLSelectElement;
         const updates: any = {};
         if (descTextarea) updates.description = descTextarea.value;
         if (lineStyleSelect) updates.lineStyle = lineStyleSelect.value;
+        if (startEndpointSelect) updates.startEndpointStyle = startEndpointSelect.value as 'dot' | 'arrow' | 'none';
+        if (endEndpointSelect) updates.endEndpointStyle = endEndpointSelect.value as 'dot' | 'arrow' | 'none';
         stateManager.updateBranch(data.id, updates);
       } else if (type === 'textbox') {
         // Textbox saving
@@ -1819,6 +1991,16 @@ export class UIComponents {
           if (!isNaN(fontSize)) updates.fontSize = fontSize;
         }
         stateManager.updateTextbox(data.id, updates);
+      } else if (type === 'line') {
+        // Line saving
+        const lineStyleSelect = content.querySelector('#line-linestyle-select') as HTMLSelectElement;
+        const startEndpointSelect = content.querySelector('#line-start-endpoint-select') as HTMLSelectElement;
+        const endEndpointSelect = content.querySelector('#line-end-endpoint-select') as HTMLSelectElement;
+        const updates: any = {};
+        if (lineStyleSelect) updates.lineStyle = lineStyleSelect.value;
+        if (startEndpointSelect) updates.startEndpointStyle = startEndpointSelect.value as 'dot' | 'arrow' | 'none';
+        if (endEndpointSelect) updates.endEndpointStyle = endEndpointSelect.value as 'dot' | 'arrow' | 'none';
+        stateManager.updateLine(data.id, updates);
       }
       onClose();
     };
@@ -1857,6 +2039,8 @@ export class UIComponents {
             stateManager.removeBranch(data.id);
           } else if (type === 'textbox') {
             stateManager.removeTextbox(data.id);
+          } else if (type === 'line') {
+            stateManager.removeLine(data.id);
           }
           onClose();
         }

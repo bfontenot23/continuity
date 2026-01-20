@@ -1,4 +1,4 @@
-import { createProject, createContinuity, createChapter, createBranch, createTextbox } from './types';
+import { createProject, createContinuity, createChapter, createBranch, createTextbox, createLine } from './types';
 import { ContinuityFileManager, LocalStorageManager } from './fileManager';
 import { AppStateManager } from './state';
 import { UIComponents } from './ui';
@@ -10,7 +10,7 @@ import { TimelineCanvas } from './canvas';
 
 const stateManager = new AppStateManager();
 let currentEditSidebar: HTMLElement | null = null;
-let preservedSidebarState: { type: 'timeline' | 'chapter' | 'branch'; id: string } | null = null;
+let preservedSidebarState: { type: 'timeline' | 'chapter' | 'branch' | 'textbox' | 'line'; id: string } | null = null;
 
 function initializeApp() {
   const app = document.getElementById('app');
@@ -116,7 +116,13 @@ function initializeApp() {
 
     currentEditSidebar = UIComponents.createEditSidebar(
       'branch',
-      { id: branchId, description: foundBranch.description, lineStyle: foundBranch.lineStyle },
+      {
+        id: branchId,
+        description: foundBranch.description,
+        lineStyle: foundBranch.lineStyle,
+        startEndpointStyle: foundBranch.startEndpointStyle,
+        endEndpointStyle: foundBranch.endEndpointStyle,
+      },
       null, // Don't need continuity context for branches
       stateManager,
       closeSidebar,
@@ -124,7 +130,7 @@ function initializeApp() {
     );
     
     appElement.appendChild(currentEditSidebar);
-    preservedSidebarState = { type: 'branch' as any, id: branchId };
+    preservedSidebarState = { type: 'branch', id: branchId };
   }
 
   function showTextboxEditSidebar(textboxId: string, autoFocus: boolean = false) {
@@ -147,7 +153,7 @@ function initializeApp() {
     );
     
     appElement.appendChild(currentEditSidebar);
-    preservedSidebarState = { type: 'textbox' as any, id: textboxId };
+    preservedSidebarState = { type: 'textbox', id: textboxId };
   }
 
   let canvasInstance: TimelineCanvas | null = null;
@@ -208,6 +214,9 @@ function initializeApp() {
 
     // Set textboxes from project
     canvas.setTextboxes(currentProject.textboxes || []);
+
+    // Set lines from project
+    canvas.setLines(currentProject.lines || []);
 
     // Collect all branches from all continuities (avoiding duplicates)
     const allBranches = new Map();
@@ -284,6 +293,18 @@ function initializeApp() {
       stateManager.updateTextbox(textboxId, { width, height });
     });
 
+    canvas.setOnAddLine((gridX1: number, gridY1: number, gridX2: number, gridY2: number) => {
+      handleAddLine(gridX1, gridY1, gridX2, gridY2);
+    });
+
+    canvas.setOnEditLine((lineId: string) => {
+      showLineEditSidebar(lineId);
+    });
+
+    canvas.setOnLineMoved((lineId: string, gridX1: number, gridY1: number, gridX2: number, gridY2: number) => {
+      stateManager.updateLine(lineId, { gridX1, gridY1, gridX2, gridY2 });
+    });
+
     canvas.setOnReorderChapter((timelineId: string, chapterId: string, targetIndex: number) => {
       // targetIndex is the position in the sorted chapter array (0-based)
       stateManager.reorderChapter(timelineId, chapterId, targetIndex);
@@ -312,6 +333,8 @@ function initializeApp() {
       } else if (savedSidebarState.type === 'textbox') {
         const textboxId = savedSidebarState.id;
         showTextboxEditSidebar(textboxId);
+      } else if (savedSidebarState.type === 'line') {
+        showLineEditSidebar(savedSidebarState.id);
       }
     }
   }
@@ -465,6 +488,49 @@ function initializeApp() {
     }, 0);
   }
 
+  function handleAddLine(gridX1: number, gridY1: number, gridX2: number, gridY2: number) {
+    const state = stateManager.getState();
+    if (!state.currentProject) return;
+
+    // Create line
+    const line = createLine(gridX1, gridY1, gridX2, gridY2);
+    stateManager.addLine(line);
+    stateManager.selectLine(line.id);
+
+    // Open the edit sidebar for the new line with auto-focus
+    setTimeout(() => {
+      showLineEditSidebar(line.id, true);
+    }, 0);
+  }
+
+  function showLineEditSidebar(lineId: string, autoFocus: boolean = false) {
+    closeSidebar();
+    
+    const state = stateManager.getState();
+    const appElement = app;
+    if (!state.currentProject || !appElement) return;
+
+    const line = state.currentProject.lines?.find(l => l.id === lineId);
+    if (!line) return;
+
+    currentEditSidebar = UIComponents.createEditSidebar(
+      'line',
+      {
+        id: lineId,
+        lineStyle: line.lineStyle,
+        startEndpointStyle: line.startEndpointStyle,
+        endEndpointStyle: line.endEndpointStyle,
+      },
+      null,
+      stateManager,
+      closeSidebar,
+      autoFocus
+    );
+    
+    appElement.appendChild(currentEditSidebar);
+    preservedSidebarState = { type: 'line', id: lineId };
+  }
+
   function handleExport() {
     const state = stateManager.getState();
     if (state.currentProject) {
@@ -557,6 +623,15 @@ function initializeApp() {
         const centerX = (canvas.width / 2) / canvasInstance.getZoom() - canvasInstance.getOffsetX() / canvasInstance.getZoom();
         const centerY = (canvas.height / 2) / canvasInstance.getZoom() - canvasInstance.getOffsetY() / canvasInstance.getZoom();
         handleAddTextbox(centerX, centerY);
+      }
+    }
+
+    // Shift + D: Toggle Line Insertion Mode
+    if (e.shiftKey && e.key === 'D' && !isInInput) {
+      e.preventDefault();
+      const state = stateManager.getState();
+      if (state.currentProject && canvasInstance) {
+        canvasInstance.toggleLineInsertionMode();
       }
     }
   });
