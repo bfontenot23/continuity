@@ -1,0 +1,20 @@
+{
+  "name": "continuity",
+  "version": "0.1.0",
+  "description": "A web app for planning interconnected stories with branching continuities",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8"
+  },
+  "dependencies": {
+    "marked": "^17.0.1"
+  }
+}
