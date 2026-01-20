@@ -2,7 +2,7 @@
  * Main application state management
  */
 
-import { Project, Continuity, Chapter, Arc, Branch } from './types';
+import { Project, Continuity, Chapter, Arc, Branch, Textbox } from './types';
 import { LocalStorageManager } from './fileManager';
 
 type StateChangeListener = (state: AppState) => void;
@@ -12,6 +12,7 @@ export interface AppState {
   selectedContinuityId: string | null;
   selectedChapterId: string | null;
   selectedBranchId: string | null;
+  selectedTextboxId: string | null;
   arcMode: boolean;
 }
 
@@ -25,6 +26,7 @@ export class AppStateManager {
       selectedContinuityId: null,
       selectedChapterId: null,
       selectedBranchId: null,
+      selectedTextboxId: null,
       arcMode: false,
     };
   }
@@ -47,12 +49,21 @@ export class AppStateManager {
   selectChapter(chapterId: string | null): void {
     this.state.selectedChapterId = chapterId;
     this.state.selectedBranchId = null; // Reset branch selection when selecting a chapter
+    this.state.selectedTextboxId = null; // Reset textbox selection
     this.notifyListeners();
   }
 
   selectBranch(branchId: string | null): void {
     this.state.selectedBranchId = branchId;
     this.state.selectedChapterId = null; // Reset chapter selection when selecting a branch
+    this.state.selectedTextboxId = null; // Reset textbox selection
+    this.notifyListeners();
+  }
+
+  selectTextbox(textboxId: string | null): void {
+    this.state.selectedTextboxId = textboxId;
+    this.state.selectedChapterId = null; // Reset chapter selection
+    this.state.selectedBranchId = null; // Reset branch selection
     this.notifyListeners();
   }
 
@@ -146,11 +157,74 @@ export class AppStateManager {
         const chapter = continuity.chapters.find(ch => ch.id === chapterId);
         if (chapter) {
           Object.assign(chapter, updates);
+          // If gridLength changed, recalculate branch positions on this timeline
+          if ('gridLength' in updates && continuity.branches) {
+            this.recalculateBranchPositions(continuity);
+          }
           this.state.currentProject.modified = Date.now();
           this.notifyListeners();
         }
       }
     }
+  }
+
+  /**
+   * Recalculate branch positions when chapter widths change.
+   * Branches store chapter IDs to maintain their associations even when
+   * the timeline layout changes due to chapter gridLength modifications.
+   */
+  private recalculateBranchPositions(continuity: Continuity): void {
+    if (!continuity.branches || continuity.branches.length === 0) return;
+
+    // Helper to calculate chapter positions
+    const getChapterPositions = (chapters: Chapter[]) => {
+      const positions = new Map<string, { x: number; width: number }>();
+      let currentX = 1; // Start after Head (x=0, width=1)
+      const sortedChapters = [...chapters].sort((a, b) => a.timestamp - b.timestamp);
+      
+      sortedChapters.forEach((chapter) => {
+        let chapterWidth: number;
+        if (chapter.gridLength && chapter.gridLength > 0) {
+          chapterWidth = chapter.gridLength;
+        } else {
+          chapterWidth = Math.max(1, Math.ceil(chapter.title.length / 5));
+        }
+        
+        positions.set(chapter.id, { x: currentX, width: chapterWidth });
+        currentX += chapterWidth;
+      });
+      
+      return { positions, tailPosition: currentX };
+    };
+
+    // Update branches that reference this continuity
+    continuity.branches.forEach(branch => {
+      // Recalculate start position if branch starts on this continuity
+      if (branch.startContinuityId === continuity.id) {
+        if (branch.startChapterId) {
+          // Branch is anchored to a specific chapter - update position
+          const { positions } = getChapterPositions(continuity.chapters);
+          const chapterPos = positions.get(branch.startChapterId);
+          if (chapterPos) {
+            branch.startPosition = chapterPos.x + chapterPos.width;
+          }
+        }
+        // If no chapter ID, position stays as-is (was at tail or intermediate point)
+      }
+      
+      // Recalculate end position if branch ends on this continuity
+      if (branch.endContinuityId === continuity.id) {
+        if (branch.endChapterId) {
+          // Branch is anchored to a specific chapter - update position
+          const { positions } = getChapterPositions(continuity.chapters);
+          const chapterPos = positions.get(branch.endChapterId);
+          if (chapterPos) {
+            branch.endPosition = chapterPos.x + chapterPos.width;
+          }
+        }
+        // If no chapter ID, position stays as-is (was at tail or intermediate point)
+      }
+    });
   }
 
   removeChapter(continuityId: string, chapterId: string): void {
@@ -453,6 +527,52 @@ export class AppStateManager {
   setArcMode(enabled: boolean): void {
     this.state.arcMode = enabled;
     this.notifyListeners();
+  }
+
+  /**
+   * Add a textbox to the project
+   * @param textbox - The textbox to add
+   */
+  addTextbox(textbox: Textbox): void {
+    if (this.state.currentProject) {
+      if (!this.state.currentProject.textboxes) {
+        this.state.currentProject.textboxes = [];
+      }
+      this.state.currentProject.textboxes.push(textbox);
+      this.state.currentProject.modified = Date.now();
+      this.notifyListeners();
+    }
+  }
+
+  /**
+   * Update a textbox's properties
+   * @param textboxId - The ID of the textbox to update
+   * @param updates - Partial textbox updates
+   */
+  updateTextbox(textboxId: string, updates: Partial<Textbox>): void {
+    if (this.state.currentProject && this.state.currentProject.textboxes) {
+      const textbox = this.state.currentProject.textboxes.find(t => t.id === textboxId);
+      if (textbox) {
+        Object.assign(textbox, updates);
+        this.state.currentProject.modified = Date.now();
+        this.notifyListeners();
+      }
+    }
+  }
+
+  /**
+   * Remove a textbox from the project
+   * @param textboxId - The ID of the textbox to remove
+   */
+  removeTextbox(textboxId: string): void {
+    if (this.state.currentProject && this.state.currentProject.textboxes) {
+      this.state.currentProject.textboxes = this.state.currentProject.textboxes.filter(t => t.id !== textboxId);
+      if (this.state.selectedTextboxId === textboxId) {
+        this.state.selectedTextboxId = null;
+      }
+      this.state.currentProject.modified = Date.now();
+      this.notifyListeners();
+    }
   }
 
   subscribe(listener: StateChangeListener): () => void {

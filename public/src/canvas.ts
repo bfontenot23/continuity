@@ -3,6 +3,8 @@
  * Handles dragging, zooming, and visual rendering of timelines
  */
 
+import { marked } from 'marked';
+
 export interface TimelinePosition {
   id: string;
   name: string; // Timeline name/title
@@ -65,6 +67,9 @@ export class TimelineCanvas {
   private pendingDragArcTimelineId: string | null = null;
   private hoveredArcInsertionPoint: { timelineId: string | null; position: number } = { timelineId: null, position: -1 };
   
+  // Textbox pending drag
+  private pendingDragTextboxId: string | null = null;
+  
   // Timelines
   private timelines: TimelinePosition[] = [];
   private timelineHeight: number = 200;
@@ -88,6 +93,26 @@ export class TimelineCanvas {
   private arcMode: boolean = false;
   private timelineArcs: Map<string, any[]> = new Map(); // timelineId -> arcs
   
+  // Textboxes
+  private textboxes: any[] = []; // Will store all textboxes for rendering
+  private textboxOverlayContainer: HTMLElement | null = null;
+  private textboxElements: Map<string, HTMLElement> = new Map();
+  private isDraggingTextbox: boolean = false;
+  private draggedTextboxId: string | null = null;
+  private textboxDragStartX: number = 0;
+  private textboxDragStartY: number = 0;
+  private textboxOriginalX: number = 0;
+  private textboxOriginalY: number = 0;
+  private isResizingTextbox: boolean = false;
+  private resizedTextboxId: string | null = null;
+  // @ts-ignore - kept for reference but captured locally in closure now
+  private resizeHandle: 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se' | null = null;
+  private resizeStartX: number = 0;
+  private resizeStartY: number = 0;
+  private resizeOriginalWidth: number = 0;
+  private resizeOriginalHeight: number = 0;
+  private hoveredTextboxId: string | null = null; // For hover state
+  
   // Grid settings
   private gridSize: number = 50; // In pixels
   
@@ -105,15 +130,19 @@ export class TimelineCanvas {
   private onAddTimeline: (() => void) | null = null;
   private onAddChapter: ((timelineId: string, position: number) => void) | null = null;
   private onAddBranch: ((startTimelineId: string, startPosition: number, endTimelineId: string, endPosition: number) => void) | null = null;
+  private onAddTextbox: ((x: number, y: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
   private onEditChapter: ((chapterId: string) => void) | null = null;
   private onEditBranch: ((branchId: string) => void) | null = null;
+  private onEditTextbox: ((textboxId: string) => void) | null = null;
   private onReorderChapter: ((timelineId: string, chapterId: string, newPosition: number) => void) | null = null;
   private onTimelineHovered: ((timelineId: string | null, position: 'above' | 'below') => void) | null = null;
   private onTimelineMoved: ((timelineId: string, x: number, y: number) => void) | null = null;
   private onReorderArc: ((timelineId: string, arcId: string, newPosition: number) => void) | null = null;
   private onToggleArcMode: (() => void) | null = null;
   private onBackgroundClick: (() => void) | null = null;
+  private onTextboxMoved: ((textboxId: string, x: number, y: number) => void) | null = null;
+  private onTextboxResized: ((textboxId: string, width: number, height: number) => void) | null = null;
   private getStateChaptersForTimeline: ((timelineId: string) => any[]) | null = null;
   private hoveredInsertZone: { timelineId: string | null; position: 'above' | 'below' } = { timelineId: null, position: 'below' };
 
@@ -121,6 +150,13 @@ export class TimelineCanvas {
     this.container = container;
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d')!;
+    
+    // Create overlay container for textboxes
+    this.textboxOverlayContainer = document.createElement('div');
+    this.textboxOverlayContainer.style.position = 'absolute';
+    this.textboxOverlayContainer.style.top = '0';
+    this.textboxOverlayContainer.style.left = '0';
+    this.textboxOverlayContainer.style.pointerEvents = 'auto';
     
     this.menu = new MenuSystem();
     
@@ -136,7 +172,18 @@ export class TimelineCanvas {
     this.canvas.height = this.container.clientHeight;
     this.canvas.style.display = 'block';
     this.canvas.style.cursor = 'grab';
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.top = '0';
+    this.canvas.style.left = '0';
     this.container.appendChild(this.canvas);
+    
+    // Add overlay container for textboxes (non-interactive; events go to canvas)
+    if (this.textboxOverlayContainer) {
+      this.textboxOverlayContainer.style.width = this.canvas.width + 'px';
+      this.textboxOverlayContainer.style.height = this.canvas.height + 'px';
+      this.textboxOverlayContainer.style.pointerEvents = 'none';
+      this.container.appendChild(this.textboxOverlayContainer);
+    }
     
     // Start animation loop
     this.startAnimationLoop();
@@ -206,6 +253,11 @@ export class TimelineCanvas {
           } else if (clickedOptionId === 'arc-mode' && this.onToggleArcMode) {
             // Toggle arc mode
             this.onToggleArcMode();
+          } else if (clickedOptionId === 'new-textbox' && this.onAddTextbox) {
+            // Create textbox at center of canvas
+            const centerX = (this.canvas.width / 2 - this.offsetX) / this.zoom;
+            const centerY = (this.canvas.height / 2 - this.offsetY) / this.zoom;
+            this.onAddTextbox(centerX, centerY);
           }
           // Close menu smoothly
           this.menu.close();
@@ -320,6 +372,13 @@ export class TimelineCanvas {
             this.onEditBranch(clickedBranchId);
             return;
           }
+          
+          // Check for double-click on a textbox
+          const textboxClickResult = this.getClickedTextboxElement(mouseX, mouseY);
+          if (textboxClickResult && this.onEditTextbox) {
+            this.onEditTextbox(textboxClickResult.textboxId);
+            return;
+          }
         }
 
         // Check if clicking on draggable timeline element (title, head, or tail)
@@ -388,6 +447,114 @@ export class TimelineCanvas {
             this.dragDelayTimer = null;
           }, 150);
           return;
+        }
+
+        // Check if clicking on textbox or its resize handle
+        const textboxClickResult = this.getClickedTextboxElement(mouseX, mouseY);
+        if (textboxClickResult) {
+          if (textboxClickResult.type === 'resize-handle') {
+            // Start textbox resize
+            this.isResizingTextbox = true;
+            this.resizedTextboxId = textboxClickResult.textboxId;
+            this.resizeHandle = textboxClickResult.handle as 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
+            this.resizeStartX = mouseX;
+            this.resizeStartY = mouseY;
+            const resizeHandle = textboxClickResult.handle as 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
+            const textbox = this.textboxes.find(t => t.id === textboxClickResult.textboxId);
+            if (textbox) {
+              this.resizeOriginalWidth = textbox.width;
+              this.resizeOriginalHeight = textbox.height;
+              this.textboxOriginalX = textbox.x;
+              this.textboxOriginalY = textbox.y;
+            }
+            this.canvas.style.cursor = this.getResizeCursor(textboxClickResult.handle as string);
+            
+            // Add document-level event listeners for resize to work even when mouse leaves canvas
+            const handleDocumentMouseMove = (e: MouseEvent) => {
+              const rect = this.canvas.getBoundingClientRect();
+              const newMouseX = e.clientX - rect.left;
+              const newMouseY = e.clientY - rect.top;
+              
+              const deltaX = newMouseX - this.resizeStartX;
+              const deltaY = newMouseY - this.resizeStartY;
+              
+              const textbox = this.textboxes.find(t => t.id === this.resizedTextboxId);
+              if (textbox) {
+                // Keep hover state on the active textbox during resize to avoid flicker
+                this.hoveredTextboxId = textbox.id;
+                // Maintain correct resize cursor
+                this.canvas.style.cursor = this.getResizeCursor(resizeHandle);
+                // Convert screen delta to world delta
+                const worldDeltaX = deltaX / this.zoom;
+                const worldDeltaY = deltaY / this.zoom;
+                
+                // Resize based on handle type
+                // Horizontal resizing
+                if (resizeHandle.includes('e')) {
+                  textbox.width = Math.max(50, this.resizeOriginalWidth + worldDeltaX);
+                } else if (resizeHandle.includes('w')) {
+                  const newWidth = Math.max(50, this.resizeOriginalWidth - worldDeltaX);
+                  const widthDelta = this.resizeOriginalWidth - newWidth;
+                  textbox.x = this.textboxOriginalX + widthDelta;
+                  textbox.width = newWidth;
+                }
+                
+                // Vertical resizing
+                if (resizeHandle.includes('s')) {
+                  textbox.height = Math.max(30, this.resizeOriginalHeight + worldDeltaY);
+                } else if (resizeHandle.includes('n')) {
+                  const newHeight = Math.max(30, this.resizeOriginalHeight - worldDeltaY);
+                  const heightDelta = this.resizeOriginalHeight - newHeight;
+                  textbox.y = this.textboxOriginalY + heightDelta;
+                  textbox.height = newHeight;
+                }
+                this.render();
+              }
+            };
+            
+            const handleDocumentMouseUp = () => {
+              document.removeEventListener('mousemove', handleDocumentMouseMove);
+              document.removeEventListener('mouseup', handleDocumentMouseUp);
+              
+              if (this.isResizingTextbox && this.resizedTextboxId && this.onTextboxResized) {
+                const textbox = this.textboxes.find(t => t.id === this.resizedTextboxId);
+                if (textbox) {
+                  this.onTextboxResized(textbox.id, textbox.width, textbox.height);
+                }
+              }
+              
+              this.isResizingTextbox = false;
+              this.resizedTextboxId = null;
+              this.resizeHandle = null;
+              this.hoveredTextboxId = null;
+              this.canvas.style.cursor = 'grab';
+            };
+            
+            document.addEventListener('mousemove', handleDocumentMouseMove);
+            document.addEventListener('mouseup', handleDocumentMouseUp);
+            return;
+          } else if (textboxClickResult.type === 'textbox-body') {
+            // Start pending drag
+            this.pendingDragTextboxId = textboxClickResult.textboxId;
+            this.textboxDragStartX = mouseX;
+            this.textboxDragStartY = mouseY;
+            const textbox = this.textboxes.find(t => t.id === textboxClickResult.textboxId);
+            if (textbox) {
+              this.textboxOriginalX = textbox.x;
+              this.textboxOriginalY = textbox.y;
+            }
+            
+            // Delay drag start to allow double-click detection
+            this.dragDelayTimer = window.setTimeout(() => {
+              if (this.pendingDragTextboxId) {
+                this.isDraggingTextbox = true;
+                this.draggedTextboxId = this.pendingDragTextboxId;
+                this.canvas.style.cursor = 'move';
+              }
+              this.dragDelayTimer = null;
+            }, 150);
+            return;
+          }
         }
 
         // Start panning
@@ -506,6 +673,26 @@ export class TimelineCanvas {
         // Handle arc dragging - update hover state for insertion between arcs
         this.hoveredArcInsertionPoint = this.getHoveredArcInsertionPoint(mouseX, mouseY);
         this.render();
+      } else if (this.isDraggingTextbox && this.draggedTextboxId) {
+        // Handle textbox dragging
+        const deltaX = mouseX - this.textboxDragStartX;
+        const deltaY = mouseY - this.textboxDragStartY;
+        
+        const textbox = this.textboxes.find(t => t.id === this.draggedTextboxId);
+        if (textbox) {
+          // Convert screen delta to world delta
+          const worldDeltaX = deltaX / this.zoom;
+          const worldDeltaY = deltaY / this.zoom;
+          
+          textbox.x = this.textboxOriginalX + worldDeltaX;
+          textbox.y = this.textboxOriginalY + worldDeltaY;
+          this.render();
+        }
+      } else if (this.isResizingTextbox) {
+        // During active resize, keep cursor and hover stable
+        this.canvas.style.cursor = this.resizeHandle ? this.getResizeCursor(this.resizeHandle) : 'grab';
+        this.hoveredTextboxId = this.resizedTextboxId;
+        // Do not update other hover states while resizing
       } else {
         // Handle insertion mode hover
         if (this.insertionMode) {
@@ -540,19 +727,34 @@ export class TimelineCanvas {
           // Check hover states
           this.updateHoverState(mouseX, mouseY);
           
-          // Check if hovering over a branch
-          const hoveredBranchId = this.getClickedBranch(mouseX, mouseY);
+          // Check if hovering over a textbox
+          const previousHoveredTextbox = this.hoveredTextboxId;
+          this.hoveredTextboxId = this.isHoveringTextbox(mouseX, mouseY);
           
-          // Check if hovering over draggable timeline element
-          const draggableElement = this.isDraggableTimelineElement(mouseX, mouseY);
-          if (draggableElement?.isDraggable) {
-            this.canvas.style.cursor = 'move';
-          } else if (hoveredBranchId) {
-            this.canvas.style.cursor = 'pointer';
-          } else if (this.isClickingMenuButton(mouseX, mouseY)) {
-            this.canvas.style.cursor = 'pointer';
+          // Trigger render if hover state changed
+          if (previousHoveredTextbox !== this.hoveredTextboxId) {
+            this.render();
+          }
+          
+          // Check if hovering over textbox edge for resize cursor
+          const textboxClickResult = this.getClickedTextboxElement(mouseX, mouseY);
+          if (textboxClickResult?.type === 'resize-handle') {
+            this.canvas.style.cursor = this.getResizeCursor(textboxClickResult.handle as string);
           } else {
-            this.canvas.style.cursor = 'grab';
+            // Check if hovering over a branch
+            const hoveredBranchId = this.getClickedBranch(mouseX, mouseY);
+            
+            // Check if hovering over draggable timeline element
+            const draggableElement = this.isDraggableTimelineElement(mouseX, mouseY);
+            if (draggableElement?.isDraggable) {
+              this.canvas.style.cursor = 'move';
+            } else if (hoveredBranchId) {
+              this.canvas.style.cursor = 'pointer';
+            } else if (this.isClickingMenuButton(mouseX, mouseY)) {
+              this.canvas.style.cursor = 'pointer';
+            } else {
+              this.canvas.style.cursor = 'grab';
+            }
           }
         }
       }
@@ -566,6 +768,7 @@ export class TimelineCanvas {
         this.pendingDragTimelineId = null;
         this.pendingDragChapterId = null;
         this.pendingDragArcId = null;
+        this.pendingDragTextboxId = null;
       }
       
       // Save timeline position if we were dragging a timeline
@@ -606,14 +809,34 @@ export class TimelineCanvas {
         }
       }
       
+      // Save textbox position if we were dragging a textbox
+      if (this.isDraggingTextbox && this.draggedTextboxId && this.onTextboxMoved) {
+        const textbox = this.textboxes.find(t => t.id === this.draggedTextboxId);
+        if (textbox) {
+          this.onTextboxMoved(textbox.id, textbox.x, textbox.y);
+        }
+      }
+      
+      // Save textbox dimensions if we were resizing a textbox
+      if (this.isResizingTextbox && this.resizedTextboxId && this.onTextboxResized) {
+        const textbox = this.textboxes.find(t => t.id === this.resizedTextboxId);
+        if (textbox) {
+          this.onTextboxResized(textbox.id, textbox.width, textbox.height);
+        }
+      }
+      
       this.isDragging = false;
       this.isDraggingTimeline = false;
       this.isDraggingChapter = false;
       this.isDraggingArc = false;
+      this.isDraggingTextbox = false;
+      this.isResizingTextbox = false;
       this.draggedChapterId = null;
       this.draggedChapterTimelineId = null;
       this.draggedArcId = null;
       this.draggedArcTimelineId = null;
+      this.draggedTextboxId = null;
+      this.resizedTextboxId = null;
       this.hoveredInsertionPoint = { timelineId: null, position: -1 };
       this.hoveredArcInsertionPoint = { timelineId: null, position: -1 };
       this.canvas.style.cursor = 'grab';
@@ -624,11 +847,15 @@ export class TimelineCanvas {
       this.isDraggingTimeline = false;
       this.isDraggingChapter = false;
       this.isDraggingArc = false;
+      this.isDraggingTextbox = false;
+      this.isResizingTextbox = false;
       this.draggedTimelineId = null;
       this.draggedChapterId = null;
       this.draggedChapterTimelineId = null;
       this.draggedArcId = null;
       this.draggedArcTimelineId = null;
+      this.draggedTextboxId = null;
+      this.resizedTextboxId = null;
       this.canvas.style.cursor = 'grab';
       this.hoveredInsertZone = { timelineId: null, position: 'below' };
       this.hoveredInsertionPoint = { timelineId: null, position: -1 };
@@ -736,6 +963,27 @@ export class TimelineCanvas {
     }
   }
 
+  private isHoveringTextbox(mouseX: number, mouseY: number): string | null {
+    // Check each textbox to see if mouse is hovering over it
+    for (const textbox of this.textboxes) {
+      const screenX = textbox.x * this.zoom + this.offsetX;
+      const screenY = textbox.y * this.zoom + this.offsetY;
+      const screenWidth = textbox.width * this.zoom;
+      const screenHeight = textbox.height * this.zoom;
+      
+      // Check if mouse is within textbox bounds
+      if (
+        mouseX >= screenX &&
+        mouseX <= screenX + screenWidth &&
+        mouseY >= screenY &&
+        mouseY <= screenY + screenHeight
+      ) {
+        return textbox.id;
+      }
+    }
+    return null;
+  }
+
   private isClickingMenuButton(mouseX: number, mouseY: number): boolean {
     // Deprecated - use this.menu.isClickingButton() instead
     return this.menu.isClickingButton(mouseX, mouseY);
@@ -835,6 +1083,27 @@ export class TimelineCanvas {
     this.getStateChaptersForTimeline = callback;
   }
 
+  setOnAddTextbox(callback: (x: number, y: number) => void): void {
+    this.onAddTextbox = callback;
+  }
+
+  setOnEditTextbox(callback: (textboxId: string) => void): void {
+    this.onEditTextbox = callback;
+  }
+
+  setOnTextboxMoved(callback: (textboxId: string, x: number, y: number) => void): void {
+    this.onTextboxMoved = callback;
+  }
+
+  setOnTextboxResized(callback: (textboxId: string, width: number, height: number) => void): void {
+    this.onTextboxResized = callback;
+  }
+
+  setTextboxes(textboxes: any[]): void {
+    this.textboxes = textboxes;
+    this.render();
+  }
+
   toggleInsertionMode(): void {
     this.insertionMode = !this.insertionMode;
     this.hoveredInsertionPoint = { timelineId: null, position: -1 };
@@ -846,6 +1115,22 @@ export class TimelineCanvas {
     this.branchFirstPoint = null;
     this.branchHoveredPoint = { timelineId: null, position: -1 };
     this.render();
+  }
+
+  getCanvas(): HTMLCanvasElement {
+    return this.canvas;
+  }
+
+  getZoom(): number {
+    return this.zoom;
+  }
+
+  getOffsetX(): number {
+    return this.offsetX;
+  }
+
+  getOffsetY(): number {
+    return this.offsetY;
   }
 
   setBranches(branches: any[]): void {
@@ -896,7 +1181,8 @@ export class TimelineCanvas {
         chapterWidth = chapter.gridLength;
       } else {
         // Auto-calculate based on title length
-        chapterWidth = Math.max(1, Math.ceil(chapter.title.length / 6));
+        // Use divisor of 5 instead of 6 to prefer slightly longer width when close
+        chapterWidth = Math.max(1, Math.ceil(chapter.title.length / 5));
       }
       
       const visualChapter: TimelineChapter = {
@@ -959,6 +1245,9 @@ export class TimelineCanvas {
 
     // Draw timelines
     this.drawTimelines();
+
+    // Draw textboxes
+    this.drawTextboxes();
 
     // Draw menu
     this.menu.render(this.ctx, this.canvas.height, this.hoveredMenuOptionId);
@@ -2167,6 +2456,448 @@ export class TimelineCanvas {
     return { timelineId: null, position: -1 };
   }
 
+  private drawTextboxes(): void {
+    // Create or update HTML elements for each textbox
+    const existingIds = new Set(this.textboxElements.keys());
+    const currentIds = new Set(this.textboxes.map(t => t.id));
+    
+    // Remove textboxes that no longer exist
+    for (const id of existingIds) {
+      if (!currentIds.has(id)) {
+        const element = this.textboxElements.get(id);
+        if (element) {
+          element.remove();
+          this.textboxElements.delete(id);
+        }
+      }
+    }
+    
+    // Create or update textbox elements
+    for (const textbox of this.textboxes) {
+      const screenX = textbox.x + this.offsetX / this.zoom;
+      const screenY = textbox.y + this.offsetY / this.zoom;
+      
+      let element = this.textboxElements.get(textbox.id);
+      
+      if (!element) {
+        // Create new textbox element
+        element = document.createElement('div');
+        element.className = 'textbox-overlay';
+        element.dataset.textboxId = textbox.id;
+        element.style.position = 'absolute';
+        element.style.border = '2px solid transparent';
+        element.style.boxSizing = 'border-box';
+        element.style.padding = '8px';
+        // Let events pass through to canvas; all hit-testing is coordinate-based
+        element.style.pointerEvents = 'none';
+        element.style.overflow = 'auto';
+        element.style.wordWrap = 'break-word';
+        element.style.whiteSpace = 'pre-line';
+        element.style.cursor = 'default';
+        element.style.fontFamily = 'sans-serif';
+        element.innerHTML = marked(textbox.content) as string;
+        
+        this.textboxOverlayContainer?.appendChild(element);
+        this.textboxElements.set(textbox.id, element);
+      }
+      
+      // Update position and size - use world coordinates, let CSS scale handle zoom
+      element.style.left = (screenX * this.zoom) + 'px';
+      element.style.top = (screenY * this.zoom) + 'px';
+      element.style.width = textbox.width + 'px';
+      element.style.transform = `scale(${this.zoom})`;
+      element.style.transformOrigin = 'top left';
+      // Font size stays at model value - CSS scale handles zoom uniformly
+      element.style.fontSize = textbox.fontSize + 'px';
+      element.style.lineHeight = (textbox.fontSize * 1.4) + 'px';
+      // Use minHeight to allow content to expand vertically without clipping
+      element.style.height = 'auto';
+      element.style.minHeight = textbox.height + 'px';
+      
+      // Apply text alignment
+      const textAlign = textbox.alignX || 'left';
+      element.style.textAlign = textAlign;
+      
+      // Apply vertical alignment (only when content doesn't overflow)
+      const verticalAlign = textbox.alignY || 'top';
+      // Use normal display to allow content to flow and auto-expand
+      element.style.display = 'block';
+      // Only apply text alignment for horizontal positioning
+      if (verticalAlign === 'middle' || verticalAlign === 'bottom') {
+        // For these alignments, use padding to position text
+        const contentHeight = element.scrollHeight;
+        const availableHeight = textbox.height - 16; // subtract padding
+        if (contentHeight < availableHeight) {
+          if (verticalAlign === 'middle') {
+            const topPadding = (availableHeight - contentHeight) / 2;
+            element.style.paddingTop = topPadding + 'px';
+          } else if (verticalAlign === 'bottom') {
+            const topPadding = availableHeight - contentHeight;
+            element.style.paddingTop = topPadding + 'px';
+          }
+        }
+      }
+      
+      // Update content if changed - preserve blank lines while supporting markdown
+      const processContent = () => {
+        // Split by double newlines to preserve paragraph breaks
+        const paragraphs = textbox.content.split('\n\n');
+        // Process each paragraph through marked, then join with spacing
+        const processedParagraphs = paragraphs.map((para: string) => {
+          const markedPara = marked(para) as string;
+          // Remove <p> tags but preserve the HTML content inside
+          return markedPara.replace(/^<p>|<\/p>$/g, '').trim();
+        });
+        // Join with blank line spacing using margin
+        return processedParagraphs.map((p: string) => `<p style="margin-bottom: 1em;">${p}</p>`).join('');
+      };
+      const newContent = processContent();
+      if (element.innerHTML !== newContent) {
+        element.innerHTML = newContent;
+        // After content updates, sync the model height if content doesn't fit
+        // scrollHeight is unaffected by CSS transform, so compare directly
+        // Add small threshold to prevent infinite micro-adjustments
+        const contentHeight = element.scrollHeight;
+        if (contentHeight > textbox.height + 2) {
+          textbox.height = contentHeight;
+        }
+      }
+      
+      // Update hover state
+      if (this.hoveredTextboxId === textbox.id) {
+        element.style.borderColor = 'rgba(100, 150, 255, 0.6)';
+      } else {
+        element.style.borderColor = 'transparent';
+      }
+    }
+  }
+
+  // Rendering markdown text on canvas - kept for reference but using HTML rendering instead
+  // @ts-ignore - unused but kept as reference
+  private renderMarkdownText(text: string, x: number, y: number, maxWidth: number, maxHeight: number, fontSize: number, alignX: string = 'left', alignY: string = 'top'): number {
+    // Convert markdown to HTML
+    const html = marked(text) as string;
+    
+    // Parse HTML to extract text runs with formatting
+    const textRuns = this.parseMarkdownHTML(html, fontSize);
+    
+    // Set text alignment
+    const originalTextAlign = this.ctx.textAlign;
+    let alignXOffset = 0;
+    if (alignX === 'center') {
+      this.ctx.textAlign = 'center';
+      alignXOffset = maxWidth / 2;
+    } else if (alignX === 'right') {
+      this.ctx.textAlign = 'right';
+      alignXOffset = maxWidth;
+    } else {
+      this.ctx.textAlign = 'left';
+    }
+    
+    this.ctx.textBaseline = 'top';
+
+    // Wrap text runs into lines
+    const lines = this.wrapTextRuns(textRuns, maxWidth);
+    
+    const lineHeight = fontSize * 1.4;
+    const totalHeight = lines.length * lineHeight;
+    
+    // Calculate starting Y based on vertical alignment
+    let currentY = y;
+    if (alignY === 'middle') {
+      currentY = y + (maxHeight - totalHeight) / 2;
+    } else if (alignY === 'bottom') {
+      currentY = y + maxHeight - totalHeight;
+    }
+
+    // Render each line
+    for (const line of lines) {
+      if (currentY + lineHeight > y + maxHeight) break;
+      
+      // Render line with styled text runs
+      let currentX = x + alignXOffset;
+      for (const run of line) {
+        this.renderTextRun(run, currentX, currentY);
+        currentX += (run.width || 0);
+      }
+      
+      currentY += lineHeight;
+    }
+    
+    // Restore original alignment
+    this.ctx.textAlign = originalTextAlign;
+    
+    // Return required height in screen pixels
+    return totalHeight;
+  }
+
+  private parseMarkdownHTML(html: string, fontSize: number): Array<{ text: string; bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; width?: number }> {
+    const runs: Array<{ text: string; bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; width?: number }> = [];
+    
+    // Replace HTML entities
+    let text = html
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
+
+    // Remove <p> tags and convert <br> to newlines
+    text = text
+      .replace(/<p>/gi, '')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n');
+
+    let bold = false;
+    let italic = false;
+    let strikethrough = false;
+    let code = false;
+
+    // Parse HTML and extract text with formatting
+    let i = 0;
+    let currentText = '';
+
+    while (i < text.length) {
+      if (text[i] === '<') {
+        // Found a tag
+        const endTag = text.indexOf('>', i);
+        if (endTag === -1) break;
+
+        // Save current text with current formatting
+        if (currentText) {
+          runs.push({
+            text: currentText,
+            bold,
+            italic,
+            strikethrough,
+            code
+          });
+          currentText = '';
+        }
+
+        const tag = text.substring(i + 1, endTag);
+        const tagName = tag.split(/[\s>]/)[0].toLowerCase();
+        const isClosing = tag.startsWith('/');
+
+        if (isClosing) {
+          // Closing tag
+          if (tagName === 'strong' || tagName === 'b') {
+            bold = false;
+          } else if (tagName === 'em' || tagName === 'i') {
+            italic = false;
+          } else if (tagName === 's' || tagName === 'del' || tagName === 'strike') {
+            strikethrough = false;
+          } else if (tagName === 'code') {
+            code = false;
+          }
+        } else {
+          // Opening tag
+          if (tagName === 'strong' || tagName === 'b') {
+            bold = true;
+          } else if (tagName === 'em' || tagName === 'i') {
+            italic = true;
+          } else if (tagName === 's' || tagName === 'del' || tagName === 'strike') {
+            strikethrough = true;
+          } else if (tagName === 'code') {
+            code = true;
+          }
+        }
+
+        i = endTag + 1;
+      } else {
+        // Regular text character
+        currentText += text[i];
+        i++;
+      }
+    }
+
+    // Add any remaining text
+    if (currentText) {
+      runs.push({
+        text: currentText,
+        bold,
+        italic,
+        strikethrough,
+        code
+      });
+    }
+
+    // Calculate width for each run
+    for (const run of runs) {
+      const fontStr = this.getFontString(fontSize, run.bold, run.italic, run.code);
+      this.ctx.font = fontStr;
+      run.width = this.ctx.measureText(run.text).width;
+    }
+
+    return runs;
+  }
+
+  private getFontString(fontSize: number, bold: boolean = false, italic: boolean = false, code: boolean = false): string {
+    let fontFamily = code ? 'monospace' : 'sans-serif';
+    let fontWeight = bold ? 'bold' : 'normal';
+    let fontStyle = italic ? 'italic' : 'normal';
+    return `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+  }
+
+  private renderTextRun(run: any, x: number, y: number): void {
+    const fontSize = parseInt(this.ctx.font);
+    const fontStr = this.getFontString(fontSize, run.bold, run.italic, run.code);
+    this.ctx.font = fontStr;
+    this.ctx.fillStyle = '#000000';
+
+    // Handle line breaks
+    const lines = run.text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      this.ctx.fillText(lines[i], x, y + i * fontSize * 1.4);
+    }
+
+    // Draw strikethrough if needed
+    if (run.strikethrough) {
+      const strikethroughY = y + fontSize * 0.5;
+      this.ctx.strokeStyle = '#000000';
+      this.ctx.lineWidth = 1;
+      this.ctx.beginPath();
+      this.ctx.moveTo(x, strikethroughY);
+      this.ctx.lineTo(x + (run.width || 0), strikethroughY);
+      this.ctx.stroke();
+    }
+  }
+
+  private wrapTextRuns(runs: Array<{ text: string; bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; width?: number }>, maxWidth: number): Array<Array<any>> {
+    const lines: Array<Array<any>> = [];
+    let currentLine: Array<any> = [];
+    let currentLineWidth = 0;
+
+    for (const run of runs) {
+      const textParts = run.text.split('\n');
+      
+      for (let i = 0; i < textParts.length; i++) {
+        const part = textParts[i];
+        
+        if (i > 0) {
+          // Newline encountered
+          if (currentLine.length > 0) {
+            lines.push(currentLine);
+            currentLine = [];
+            currentLineWidth = 0;
+          }
+        }
+
+        if (!part) continue;
+
+        const fontStr = this.getFontString(14, run.bold, run.italic, run.code); // Use default fontSize
+        this.ctx.font = fontStr;
+        const partWidth = this.ctx.measureText(part).width;
+
+        // Check if adding this part exceeds maxWidth
+        if (currentLineWidth + partWidth > maxWidth && currentLine.length > 0) {
+          // Start new line
+          lines.push(currentLine);
+          currentLine = [{
+            text: part,
+            bold: run.bold,
+            italic: run.italic,
+            strikethrough: run.strikethrough,
+            code: run.code,
+            width: partWidth
+          }];
+          currentLineWidth = partWidth;
+        } else {
+          // Add to current line
+          currentLine.push({
+            text: part,
+            bold: run.bold,
+            italic: run.italic,
+            strikethrough: run.strikethrough,
+            code: run.code,
+            width: partWidth
+          });
+          currentLineWidth += partWidth;
+        }
+      }
+    }
+
+    if (currentLine.length > 0) {
+      lines.push(currentLine);
+    }
+
+    return lines;
+  }
+
+
+  private getClickedTextboxElement(mouseX: number, mouseY: number): { type: string; textboxId: string; handle?: string } | null {
+    const borderHitRadius = 8; // Pixels from edge to count as border click
+    
+    for (const textbox of this.textboxes) {
+      const screenX = textbox.x * this.zoom + this.offsetX;
+      const screenY = textbox.y * this.zoom + this.offsetY;
+      const screenWidth = textbox.width * this.zoom;
+      const screenHeight = textbox.height * this.zoom;
+
+      // Check if clicking on textbox body first
+      if (mouseX >= screenX && mouseX <= screenX + screenWidth &&
+          mouseY >= screenY && mouseY <= screenY + screenHeight) {
+        
+        // Check if clicking on borders for resizing
+        const leftEdge = Math.abs(mouseX - screenX) <= borderHitRadius;
+        const rightEdge = Math.abs(mouseX - (screenX + screenWidth)) <= borderHitRadius;
+        const topEdge = Math.abs(mouseY - screenY) <= borderHitRadius;
+        const bottomEdge = Math.abs(mouseY - (screenY + screenHeight)) <= borderHitRadius;
+        
+        // Corner handles (check corners first for priority)
+        if (topEdge && leftEdge) {
+          return { type: 'resize-handle', textboxId: textbox.id, handle: 'nw' };
+        }
+        if (topEdge && rightEdge) {
+          return { type: 'resize-handle', textboxId: textbox.id, handle: 'ne' };
+        }
+        if (bottomEdge && leftEdge) {
+          return { type: 'resize-handle', textboxId: textbox.id, handle: 'sw' };
+        }
+        if (bottomEdge && rightEdge) {
+          return { type: 'resize-handle', textboxId: textbox.id, handle: 'se' };
+        }
+        
+        // Edge handles
+        if (topEdge) {
+          return { type: 'resize-handle', textboxId: textbox.id, handle: 'n' };
+        }
+        if (bottomEdge) {
+          return { type: 'resize-handle', textboxId: textbox.id, handle: 's' };
+        }
+        if (leftEdge) {
+          return { type: 'resize-handle', textboxId: textbox.id, handle: 'w' };
+        }
+        if (rightEdge) {
+          return { type: 'resize-handle', textboxId: textbox.id, handle: 'e' };
+        }
+        
+        // Body click
+        return { type: 'textbox-body', textboxId: textbox.id };
+      }
+    }
+
+    return null;
+  }
+
+  private getResizeCursor(handle: string): string {
+    switch (handle) {
+      case 'n':
+      case 's':
+        return 'ns-resize';
+      case 'e':
+      case 'w':
+        return 'ew-resize';
+      case 'nw':
+      case 'se':
+        return 'nwse-resize';
+      case 'ne':
+      case 'sw':
+        return 'nesw-resize';
+      default:
+        return 'grab';
+    }
+  }
+
   dispose(): void {
     this.canvas.remove();
   }
@@ -2187,7 +2918,8 @@ class MenuSystem {
     { id: 'new-timeline', label: 'New Timeline', keybind: 'Shift + T' },
     { id: 'new-chapter', label: 'New Chapter', keybind: 'Shift + C' },
     { id: 'arc-mode', label: 'Toggle Arc Mode', keybind: 'Shift + A' },
-    { id: 'new-branch', label: 'New Branch', keybind: 'Shift + B' }
+    { id: 'new-branch', label: 'New Branch', keybind: 'Shift + B' },
+    { id: 'new-textbox', label: 'New Textbox', keybind: 'Shift + S' }
   ];
   
   // Button and menu dimensions

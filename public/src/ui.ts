@@ -1273,8 +1273,8 @@ export class UIComponents {
   }
 
   static createEditSidebar(
-    type: 'timeline' | 'chapter' | 'branch',
-    data: { id: string; name?: string; title?: string; description?: string; gridLength?: number; arcId?: string; lineStyle?: string },
+    type: 'timeline' | 'chapter' | 'branch' | 'textbox',
+    data: { id: string; name?: string; title?: string; description?: string; gridLength?: number; arcId?: string; lineStyle?: string; content?: string; fontSize?: number; alignX?: 'left' | 'center' | 'right'; alignY?: 'top' | 'middle' | 'bottom' },
     continuity: Continuity | null,
     stateManager: AppStateManager,
     onClose: () => void,
@@ -1287,13 +1287,29 @@ export class UIComponents {
     header.className = 'edit-sidebar-header';
     
     const title = document.createElement('h3');
-    title.textContent = type === 'timeline' ? 'Edit Timeline' : type === 'chapter' ? 'Edit Chapter' : 'Edit Branch';
+    title.textContent = type === 'timeline' ? 'Edit Timeline' : type === 'chapter' ? 'Edit Chapter' : type === 'branch' ? 'Edit Branch' : 'Edit Textbox';
     header.appendChild(title);
 
     const closeBtn = document.createElement('button');
     closeBtn.className = 'close-btn';
     closeBtn.innerHTML = '×';
-    closeBtn.addEventListener('click', onClose);
+    closeBtn.addEventListener('click', () => {
+      // Save before closing for textboxes
+      if (type === 'textbox') {
+        const contentTextarea = content.querySelector('#textbox-content-input') as HTMLTextAreaElement;
+        const fontSizeInput = content.querySelector('#textbox-fontsize-input') as HTMLInputElement;
+        const updates: any = {};
+        if (contentTextarea) updates.content = contentTextarea.value;
+        if (fontSizeInput) {
+          const fontSize = parseInt(fontSizeInput.value, 10);
+          if (!isNaN(fontSize)) updates.fontSize = fontSize;
+        }
+        if (Object.keys(updates).length > 0) {
+          stateManager.updateTextbox(data.id, updates);
+        }
+      }
+      onClose();
+    });
     header.appendChild(closeBtn);
 
     sidebar.appendChild(header);
@@ -1557,6 +1573,141 @@ export class UIComponents {
           stateManager.updateChapter(continuity.id, data.id, { gridLength: finalValue });
         });
       }
+    } else if (type === 'textbox') {
+      // Textbox editing - content and font size fields
+      const contentGroup = document.createElement('div');
+      contentGroup.className = 'form-group';
+      
+      const contentLabel = document.createElement('label');
+      contentLabel.textContent = 'Content (Markdown)';
+      contentGroup.appendChild(contentLabel);
+
+      const contentTextarea = document.createElement('textarea');
+      contentTextarea.value = data.content || '';
+      contentTextarea.placeholder = 'Enter textbox content (supports Markdown)';
+      contentTextarea.id = 'textbox-content-input';
+      contentTextarea.style.minHeight = '200px';
+      contentGroup.appendChild(contentTextarea);
+
+      content.appendChild(contentGroup);
+
+      // Autosave on blur
+      contentTextarea.addEventListener('blur', () => {
+        stateManager.updateTextbox(data.id, { content: contentTextarea.value });
+      });
+
+      // Font size input
+      const fontSizeGroup = document.createElement('div');
+      fontSizeGroup.className = 'form-group';
+      
+      const fontSizeLabel = document.createElement('label');
+      fontSizeLabel.textContent = 'Font Size (px)';
+      fontSizeGroup.appendChild(fontSizeLabel);
+
+      const fontSizeInput = document.createElement('input');
+      fontSizeInput.type = 'number';
+      fontSizeInput.min = '8';
+      fontSizeInput.max = '48';
+      fontSizeInput.step = '1';
+      fontSizeInput.value = (data.fontSize || 14).toString();
+      fontSizeInput.id = 'textbox-fontsize-input';
+      fontSizeGroup.appendChild(fontSizeInput);
+
+      content.appendChild(fontSizeGroup);
+
+      // Autosave on change
+      fontSizeInput.addEventListener('change', () => {
+        const fontSize = parseInt(fontSizeInput.value, 10);
+        if (!isNaN(fontSize)) {
+          stateManager.updateTextbox(data.id, { fontSize });
+        }
+      });
+
+      // Horizontal alignment selector
+      const alignXGroup = document.createElement('div');
+      alignXGroup.className = 'form-group';
+      
+      const alignXLabel = document.createElement('label');
+      alignXLabel.textContent = 'Horizontal Alignment';
+      alignXGroup.appendChild(alignXLabel);
+
+      const alignXSelect = document.createElement('select');
+      alignXSelect.id = 'textbox-alignx-select';
+      
+      const leftOption = document.createElement('option');
+      leftOption.value = 'left';
+      leftOption.textContent = 'Left';
+      if ((data.alignX || 'left') === 'left') {
+        leftOption.selected = true;
+      }
+      alignXSelect.appendChild(leftOption);
+
+      const centerOption = document.createElement('option');
+      centerOption.value = 'center';
+      centerOption.textContent = 'Center';
+      if (data.alignX === 'center') {
+        centerOption.selected = true;
+      }
+      alignXSelect.appendChild(centerOption);
+
+      const rightOption = document.createElement('option');
+      rightOption.value = 'right';
+      rightOption.textContent = 'Right';
+      if (data.alignX === 'right') {
+        rightOption.selected = true;
+      }
+      alignXSelect.appendChild(rightOption);
+
+      alignXGroup.appendChild(alignXSelect);
+      content.appendChild(alignXGroup);
+
+      // Autosave on change
+      alignXSelect.addEventListener('change', () => {
+        stateManager.updateTextbox(data.id, { alignX: alignXSelect.value as 'left' | 'center' | 'right' });
+      });
+
+      // Vertical alignment selector
+      const alignYGroup = document.createElement('div');
+      alignYGroup.className = 'form-group';
+      
+      const alignYLabel = document.createElement('label');
+      alignYLabel.textContent = 'Vertical Alignment';
+      alignYGroup.appendChild(alignYLabel);
+
+      const alignYSelect = document.createElement('select');
+      alignYSelect.id = 'textbox-aligny-select';
+      
+      const topOption = document.createElement('option');
+      topOption.value = 'top';
+      topOption.textContent = 'Top';
+      if ((data.alignY || 'top') === 'top') {
+        topOption.selected = true;
+      }
+      alignYSelect.appendChild(topOption);
+
+      const middleOption = document.createElement('option');
+      middleOption.value = 'middle';
+      middleOption.textContent = 'Middle';
+      if (data.alignY === 'middle') {
+        middleOption.selected = true;
+      }
+      alignYSelect.appendChild(middleOption);
+
+      const bottomOption = document.createElement('option');
+      bottomOption.value = 'bottom';
+      bottomOption.textContent = 'Bottom';
+      if (data.alignY === 'bottom') {
+        bottomOption.selected = true;
+      }
+      alignYSelect.appendChild(bottomOption);
+
+      alignYGroup.appendChild(alignYSelect);
+      content.appendChild(alignYGroup);
+
+      // Autosave on change
+      alignYSelect.addEventListener('change', () => {
+        stateManager.updateTextbox(data.id, { alignY: alignYSelect.value as 'top' | 'middle' | 'bottom' });
+      });
     } else if (type === 'branch') {
       // Branch editing - description and line style fields
       const descGroup = document.createElement('div');
@@ -1657,6 +1808,17 @@ export class UIComponents {
         if (descTextarea) updates.description = descTextarea.value;
         if (lineStyleSelect) updates.lineStyle = lineStyleSelect.value;
         stateManager.updateBranch(data.id, updates);
+      } else if (type === 'textbox') {
+        // Textbox saving
+        const contentTextarea = content.querySelector('#textbox-content-input') as HTMLTextAreaElement;
+        const fontSizeInput = content.querySelector('#textbox-fontsize-input') as HTMLInputElement;
+        const updates: any = {};
+        if (contentTextarea) updates.content = contentTextarea.value;
+        if (fontSizeInput) {
+          const fontSize = parseInt(fontSizeInput.value, 10);
+          if (!isNaN(fontSize)) updates.fontSize = fontSize;
+        }
+        stateManager.updateTextbox(data.id, updates);
       }
       onClose();
     };
@@ -1693,6 +1855,8 @@ export class UIComponents {
             stateManager.removeChapter(continuity.id, data.id);
           } else if (type === 'branch') {
             stateManager.removeBranch(data.id);
+          } else if (type === 'textbox') {
+            stateManager.removeTextbox(data.id);
           }
           onClose();
         }
@@ -1716,6 +1880,9 @@ export class UIComponents {
         } else if (type === 'branch') {
           const descTextarea = sidebar.querySelector('#branch-desc-input') as HTMLTextAreaElement;
           if (descTextarea) descTextarea.focus();
+        } else if (type === 'textbox') {
+          const contentTextarea = sidebar.querySelector('#textbox-content-input') as HTMLTextAreaElement;
+          if (contentTextarea) contentTextarea.focus();
         }
       }, 0);
     }

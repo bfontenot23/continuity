@@ -25,14 +25,27 @@ export interface Branch {
   id: string;
   description?: string;
   lineStyle?: 'solid' | 'dashed'; // Default: solid
-  // Start point: reference to a continuity and position on that timeline
+  // Start point: reference to a continuity and chapter this branch starts from
   startContinuityId: string;
-  startPosition: number; // Grid position (0-based), not tied to a specific chapter
-  // End point: reference to a different continuity and position
+  startChapterId?: string; // Optional: chapter ID this branch is anchored to (for layout recalculation)
+  startPosition: number; // Grid position (0-based), recalculated when chapters change
+  // End point: reference to a different continuity and chapter this branch ends at
   endContinuityId: string;
-  endPosition: number; // Grid position (0-based)
+  endChapterId?: string; // Optional: chapter ID this branch is anchored to (for layout recalculation)
+  endPosition: number; // Grid position (0-based), recalculated when chapters change
 }
 
+export interface Textbox {
+  id: string;
+  content: string; // Markdown content
+  x: number; // World X position (not grid-locked)
+  y: number; // World Y position (not grid-locked)
+  width: number; // Width in pixels
+  height: number; // Height in pixels
+  fontSize: number; // Font size in pixels
+  alignX?: 'left' | 'center' | 'right'; // Horizontal alignment (default: left)
+  alignY?: 'top' | 'middle' | 'bottom'; // Vertical alignment (default: top)
+}
 
 
 export interface Continuity {
@@ -54,6 +67,7 @@ export interface Project {
   created: number;
   modified: number;
   continuities: Continuity[];
+  textboxes: Textbox[]; // Free-floating textboxes with markdown support
 }
 
 // Helper functions for working with these models
@@ -65,6 +79,7 @@ export function createProject(title: string): Project {
     created: now,
     modified: now,
     continuities: [],
+    textboxes: [],
   };
 }
 
@@ -152,6 +167,26 @@ export function createBranch(
     startPosition,
     endContinuityId,
     endPosition,
+  };
+}
+
+export function createTextbox(
+  x: number,
+  y: number,
+  width: number = 100,
+  height: number = 60,
+  fontSize: number = 14
+): Textbox {
+  return {
+    id: generateId(),
+    content: 'New textbox',
+    x,
+    y,
+    width,
+    height,
+    fontSize,
+    alignX: 'left',
+    alignY: 'top',
   };
 }
 

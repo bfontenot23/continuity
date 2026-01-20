@@ -1,4 +1,4 @@
-import { createProject, createContinuity, createChapter, createBranch } from './types';
+import { createProject, createContinuity, createChapter, createBranch, createTextbox } from './types';
 import { ContinuityFileManager, LocalStorageManager } from './fileManager';
 import { AppStateManager } from './state';
 import { UIComponents } from './ui';
@@ -127,6 +127,29 @@ function initializeApp() {
     preservedSidebarState = { type: 'branch' as any, id: branchId };
   }
 
+  function showTextboxEditSidebar(textboxId: string, autoFocus: boolean = false) {
+    closeSidebar();
+    
+    const state = stateManager.getState();
+    const appElement = app;
+    if (!state.currentProject || !appElement) return;
+
+    const textbox = state.currentProject.textboxes?.find(t => t.id === textboxId);
+    if (!textbox) return;
+
+    currentEditSidebar = UIComponents.createEditSidebar(
+      'textbox',
+      { id: textboxId, content: textbox.content, fontSize: textbox.fontSize, alignX: textbox.alignX, alignY: textbox.alignY },
+      null,
+      stateManager,
+      closeSidebar,
+      autoFocus
+    );
+    
+    appElement.appendChild(currentEditSidebar);
+    preservedSidebarState = { type: 'textbox' as any, id: textboxId };
+  }
+
   let canvasInstance: TimelineCanvas | null = null;
   let lastViewport: { offsetX: number; offsetY: number; zoom: number } | null = null;
 
@@ -183,6 +206,9 @@ function initializeApp() {
       canvas.updateTimelineChaptersWithArcs(continuity.id, continuity.chapters, continuity.arcs);
     });
 
+    // Set textboxes from project
+    canvas.setTextboxes(currentProject.textboxes || []);
+
     // Collect all branches from all continuities (avoiding duplicates)
     const allBranches = new Map();
     currentProject.continuities.forEach((continuity) => {
@@ -222,7 +248,7 @@ function initializeApp() {
       showBranchEditSidebar(branchId);
     });
 
-    canvas.setOnTimelineHovered((timelineId: string | null, position: 'above' | 'below') => {
+    canvas.setOnTimelineHovered((_timelineId: string | null, _position: 'above' | 'below') => {
       // Visual feedback for hover states - can be expanded for more interactivity
     });
 
@@ -237,6 +263,25 @@ function initializeApp() {
 
     canvas.setOnBackgroundClick(() => {
       closeSidebar();
+    });
+
+    canvas.setOnAddTextbox((x: number, y: number) => {
+      const state = stateManager.getState();
+      if (!state.currentProject) return;
+      
+      handleAddTextbox(x, y);
+    });
+
+    canvas.setOnEditTextbox((textboxId: string) => {
+      showTextboxEditSidebar(textboxId);
+    });
+
+    canvas.setOnTextboxMoved((textboxId: string, x: number, y: number) => {
+      stateManager.updateTextbox(textboxId, { x, y });
+    });
+
+    canvas.setOnTextboxResized((textboxId: string, width: number, height: number) => {
+      stateManager.updateTextbox(textboxId, { width, height });
     });
 
     canvas.setOnReorderChapter((timelineId: string, chapterId: string, targetIndex: number) => {
@@ -264,6 +309,9 @@ function initializeApp() {
         showChapterEditSidebar(savedSidebarState.id);
       } else if (savedSidebarState.type === 'branch') {
         showBranchEditSidebar(savedSidebarState.id);
+      } else if (savedSidebarState.type === 'textbox') {
+        const textboxId = savedSidebarState.id;
+        showTextboxEditSidebar(textboxId);
       }
     }
   }
@@ -346,14 +394,74 @@ function initializeApp() {
     const state = stateManager.getState();
     if (!state.currentProject) return;
 
-    // Create branch
+    // Find which chapters these positions correspond to
+    const startChapterId = findChapterAtPosition(startTimelineId, startPosition);
+    const endChapterId = findChapterAtPosition(endTimelineId, endPosition);
+
+    // Create branch with chapter associations
     const branch = createBranch(startTimelineId, startPosition, endTimelineId, endPosition);
+    branch.startChapterId = startChapterId;
+    branch.endChapterId = endChapterId;
+    
     stateManager.addBranch(branch);
     stateManager.selectBranch(branch.id);
 
     // Open the edit sidebar for the new branch with auto-focus
     setTimeout(() => {
       showBranchEditSidebar(branch.id, true);
+    }, 0);
+  }
+
+  /**
+   * Find which chapter (if any) corresponds to a grid position on a timeline.
+   * Returns the ID of the chapter whose end position matches this position,
+   * or undefined if the position is at the tail or not on a valid chapter boundary.
+   */
+  function findChapterAtPosition(continuityId: string, gridPosition: number): string | undefined {
+    const state = stateManager.getState();
+    if (!state.currentProject) return undefined;
+
+    const continuity = state.currentProject.continuities.find(c => c.id === continuityId);
+    if (!continuity) return undefined;
+
+    // Calculate chapter positions
+    const sortedChapters = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
+    let currentX = 1; // Start after Head
+
+    for (const chapter of sortedChapters) {
+      // Calculate width
+      let chapterWidth: number;
+      if (chapter.gridLength && chapter.gridLength > 0) {
+        chapterWidth = chapter.gridLength;
+      } else {
+        chapterWidth = Math.max(1, Math.ceil(chapter.title.length / 5));
+      }
+
+      const chapterEndPos = currentX + chapterWidth;
+      
+      // Check if position matches this chapter's end
+      if (Math.abs(gridPosition - chapterEndPos) < 0.01) {
+        return chapter.id;
+      }
+
+      currentX += chapterWidth;
+    }
+
+    return undefined;
+  }
+
+  function handleAddTextbox(x: number, y: number) {
+    const state = stateManager.getState();
+    if (!state.currentProject) return;
+
+    // Create textbox with default dimensions
+    const textbox = createTextbox(x, y, 100, 60, 14);
+    stateManager.addTextbox(textbox);
+    stateManager.selectTextbox(textbox.id);
+
+    // Open the edit sidebar for the new textbox with auto-focus
+    setTimeout(() => {
+      showTextboxEditSidebar(textbox.id, true);
     }, 0);
   }
 
@@ -436,6 +544,19 @@ function initializeApp() {
       const state = stateManager.getState();
       if (state.currentProject && canvasInstance) {
         canvasInstance.toggleBranchInsertionMode();
+      }
+    }
+
+    // Shift + S: Add Textbox
+    if (e.shiftKey && e.key === 'S' && !isInInput) {
+      e.preventDefault();
+      const state = stateManager.getState();
+      if (state.currentProject && canvasInstance) {
+        // Create textbox at center of canvas
+        const canvas = canvasInstance.getCanvas();
+        const centerX = (canvas.width / 2) / canvasInstance.getZoom() - canvasInstance.getOffsetX() / canvasInstance.getZoom();
+        const centerY = (canvas.height / 2) / canvasInstance.getZoom() - canvasInstance.getOffsetY() / canvasInstance.getZoom();
+        handleAddTextbox(centerX, centerY);
       }
     }
   });
