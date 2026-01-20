@@ -144,6 +144,8 @@ export class TimelineCanvas {
   
   // Animation state
   private animationRunning: boolean = false;
+  private suppressMenuRender: boolean = false; // Hide menu for exports/snapshots
+  private suppressTextboxRender: boolean = false; // Skip DOM textbox overlay (e.g., offscreen export)
   
   // Callbacks
   private onAddTimeline: (() => void) | null = null;
@@ -1360,6 +1362,85 @@ export class TimelineCanvas {
     return this.canvas;
   }
 
+  /**
+   * Export the currently rendered view to a PNG download
+   */
+  exportToPNG(filename: string = 'timeline.png'): void {
+    // Compute world bounds of all drawable objects
+    const bounds = this.computeContentBounds();
+    if (!bounds) return;
+
+    const padding = this.gridSize * 2; // 2 gridspaces of padding
+    const exportWidth = Math.ceil(bounds.width + padding * 2);
+    const exportHeight = Math.ceil(bounds.height + padding * 2);
+
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = exportWidth;
+    tempCanvas.height = exportHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) return;
+
+    // Save current viewport/state
+    const originalCanvas = this.canvas;
+    const originalCtx = this.ctx;
+    const originalOffsetX = this.offsetX;
+    const originalOffsetY = this.offsetY;
+    const originalZoom = this.zoom;
+    const originalSuppressMenuRender = this.suppressMenuRender;
+    const wasMenuOpen = this.menu.isOpen();
+    const originalSuppressTextboxRender = this.suppressTextboxRender;
+    const originalArcMode = this.arcMode;
+
+    // Switch to offscreen rendering context
+    this.canvas = tempCanvas;
+    this.ctx = tempCtx;
+
+    // Force arc mode so arcs/titles are visible
+    this.arcMode = true;
+
+    // Position viewport so all content fits with padding
+    this.zoom = 1;
+    this.offsetX = padding - bounds.minX;
+    this.offsetY = padding - bounds.minY;
+
+    // Hide menu while exporting
+    this.suppressMenuRender = true;
+    this.suppressTextboxRender = true; // we'll draw textboxes directly onto the offscreen ctx
+    this.menu.close();
+
+    // Render onto the offscreen canvas
+    this.render();
+
+    // Render textboxes directly onto the offscreen canvas (since DOM overlay is suppressed)
+    this.renderTextboxesToCanvas(tempCtx);
+
+    // Restore original state
+    this.canvas = originalCanvas;
+    this.ctx = originalCtx;
+    this.offsetX = originalOffsetX;
+    this.offsetY = originalOffsetY;
+    this.zoom = originalZoom;
+    this.suppressMenuRender = originalSuppressMenuRender;
+    this.suppressTextboxRender = originalSuppressTextboxRender;
+    this.arcMode = originalArcMode;
+    if (wasMenuOpen) {
+      this.menu.open();
+    }
+
+    // Export PNG
+    tempCanvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  }
+
   getZoom(): number {
     return this.zoom;
   }
@@ -1380,6 +1461,184 @@ export class TimelineCanvas {
   setArcMode(enabled: boolean): void {
     this.arcMode = enabled;
     this.render();
+  }
+
+  /**
+   * Calculate world-space bounds of timelines, chapters, textboxes, lines, and branches
+   */
+  private computeContentBounds(): { minX: number; minY: number; width: number; height: number } | null {
+    if (this.timelines.length === 0) {
+      return null;
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    const chapterSegmentWidth = this.gridSize; // world units (pixels in world space)
+
+    // Timelines and chapters
+    this.timelines.forEach((timeline) => {
+      // Include timeline title width to the left
+      const titleWidth = this.ctx.measureText(timeline.name || '').width + 30; // gap + small buffer
+
+      // Timeline base point and label space (tighter vertical padding)
+      minX = Math.min(minX, timeline.x - titleWidth);
+      minY = Math.min(minY, timeline.y - 50); // room for arc titles/ticks
+      maxY = Math.max(maxY, timeline.y + 50); // room for ticks/arrow
+
+      if (timeline.chapters && timeline.chapters.length > 0) {
+        const lastChapter = timeline.chapters[timeline.chapters.length - 1];
+        const tailEnd = (lastChapter.x + lastChapter.width) * chapterSegmentWidth;
+        maxX = Math.max(maxX, timeline.x + tailEnd + 40); // room for arrow
+      } else {
+        maxX = Math.max(maxX, timeline.x + timeline.width);
+      }
+    });
+
+    // Textboxes
+    this.textboxes.forEach((tb) => {
+      minX = Math.min(minX, tb.x);
+      minY = Math.min(minY, tb.y);
+      maxX = Math.max(maxX, tb.x + tb.width);
+      maxY = Math.max(maxY, tb.y + tb.height);
+    });
+
+    // Lines (grid-based)
+    this.lines.forEach((line) => {
+      const x1 = line.gridX1 * this.gridSize;
+      const y1 = line.gridY1 * this.gridSize;
+      const x2 = line.gridX2 * this.gridSize;
+      const y2 = line.gridY2 * this.gridSize;
+      minX = Math.min(minX, x1, x2);
+      minY = Math.min(minY, y1, y2);
+      maxX = Math.max(maxX, x1, x2);
+      maxY = Math.max(maxY, y1, y2);
+    });
+
+    // Branches (world units already)
+    this.branches.forEach((branch) => {
+      const startTimeline = this.timelines.find((t) => t.id === branch.startContinuityId);
+      const endTimeline = this.timelines.find((t) => t.id === branch.endContinuityId);
+      if (!startTimeline || !endTimeline) return;
+
+      const startX = startTimeline.x + branch.startPosition * chapterSegmentWidth;
+      const startY = startTimeline.y;
+      const endX = endTimeline.x + branch.endPosition * chapterSegmentWidth;
+      const endY = endTimeline.y;
+
+      minX = Math.min(minX, startX, endX);
+      minY = Math.min(minY, startY, endY);
+      maxX = Math.max(maxX, startX, endX);
+      maxY = Math.max(maxY, startY, endY);
+    });
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      return null;
+    }
+
+    return {
+      minX,
+      minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }
+
+  /**
+   * Render textboxes directly onto a canvas (used for PNG export)
+   */
+  private renderTextboxesToCanvas(ctx: CanvasRenderingContext2D): void {
+    const padding = 8;
+    this.textboxes.forEach((tb) => {
+      const screenX = tb.x * this.zoom + this.offsetX;
+      const screenY = tb.y * this.zoom + this.offsetY;
+      const width = tb.width * this.zoom;
+      const height = tb.height * this.zoom;
+
+      // Text only (no background or outline)
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(screenX, screenY, width, height);
+      ctx.clip();
+
+      const fontSize = tb.fontSize * this.zoom;
+      const lineHeight = tb.fontSize * 1.4 * this.zoom;
+      ctx.font = `${fontSize}px sans-serif`;
+      ctx.fillStyle = '#222';
+      ctx.textBaseline = 'top';
+
+      const maxTextWidth = width - padding * 2;
+      const alignX = tb.alignX || 'left';
+      const alignY = tb.alignY || 'top';
+
+      const raw = (tb.content || '').replace(/\r\n/g, '\n');
+      const paragraphs = raw.split('\n');
+
+      // Lay out lines first to compute total height for vertical alignment
+      const lines: string[] = [];
+      const measureLine = (text: string) => ctx.measureText(text).width;
+      for (const para of paragraphs) {
+        const words = para.split(/\s+/).filter(Boolean);
+        let line = '';
+        for (const word of words) {
+          const test = line ? `${line} ${word}` : word;
+          if (measureLine(test) <= maxTextWidth) {
+            line = test;
+          } else {
+            if (line) lines.push(line);
+            line = word;
+          }
+        }
+        if (line) lines.push(line);
+        // Paragraph break marker as empty string to add spacing later
+        lines.push('');
+      }
+      if (lines.length > 0 && lines[lines.length - 1] === '') {
+        lines.pop(); // remove trailing spacer
+      }
+
+      const paragraphGap = lineHeight * 0.3;
+      let contentHeight = 0;
+      lines.forEach((text) => {
+        contentHeight += text === '' ? paragraphGap : lineHeight;
+      });
+
+      const availableHeight = height - padding * 2;
+      let y = screenY + padding;
+      if (alignY === 'middle') {
+        y = screenY + padding + Math.max(0, (availableHeight - contentHeight) / 2);
+      } else if (alignY === 'bottom') {
+        y = screenY + padding + Math.max(0, availableHeight - contentHeight);
+      }
+
+      for (const text of lines) {
+        if (text === '') {
+          y += paragraphGap;
+          continue;
+        }
+        this.drawAlignedText(ctx, text, screenX, width, y, alignX as 'left' | 'center' | 'right', padding);
+        y += lineHeight;
+      }
+
+      ctx.restore();
+    });
+  }
+
+  private drawAlignedText(ctx: CanvasRenderingContext2D, text: string, boxX: number, boxWidth: number, y: number, align: 'left' | 'center' | 'right', padding: number): void {
+    let x = boxX + padding;
+    if (align === 'center') {
+      ctx.textAlign = 'center';
+      x = boxX + boxWidth / 2;
+    } else if (align === 'right') {
+      ctx.textAlign = 'right';
+      x = boxX + boxWidth - padding;
+    } else {
+      ctx.textAlign = 'left';
+      x = boxX + padding;
+    }
+    ctx.fillText(text, x, y);
   }
 
   updateTimelineArcs(timelineId: string, arcs: any[]): void {
@@ -1488,11 +1747,15 @@ export class TimelineCanvas {
     // Draw lines
     this.drawLines();
 
-    // Draw textboxes
-    this.drawTextboxes();
+    // Draw textboxes (skip DOM overlay when suppressed, e.g., offscreen export)
+    if (!this.suppressTextboxRender) {
+      this.drawTextboxes();
+    }
 
-    // Draw menu
-    this.menu.render(this.ctx, this.canvas.height, this.hoveredMenuOptionId);
+    // Draw menu unless suppressed (e.g., during PNG export)
+    if (!this.suppressMenuRender) {
+      this.menu.render(this.ctx, this.canvas.height, this.hoveredMenuOptionId);
+    }
   }
 
   private drawGrid(): void {
@@ -3680,4 +3943,5 @@ class MenuSystem {
     ctx.closePath();
     ctx.stroke();
   }
+
 }

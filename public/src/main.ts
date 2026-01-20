@@ -189,7 +189,8 @@ function initializeApp() {
         currentProject,
         openNewProjectModal,
         handleExport,
-        handleImport
+        handleImport,
+        handleExportPNG
       )
     );
 
@@ -535,6 +536,15 @@ function initializeApp() {
     const state = stateManager.getState();
     if (state.currentProject) {
       ContinuityFileManager.exportProject(state.currentProject);
+    }
+  }
+
+  function handleExportPNG() {
+    if (canvasInstance) {
+      const state = stateManager.getState();
+      const projectName = state.currentProject?.title || 'timeline';
+      const filename = `${projectName.replace(/\s+/g, '_')}.png`;
+      canvasInstance.exportToPNG(filename);
     }
   }
 

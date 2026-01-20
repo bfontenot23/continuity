@@ -503,18 +503,22 @@ export class AppStateManager {
    * @param updates - Partial branch updates
    */
   updateBranch(branchId: string, updates: Partial<Branch>): void {
-    if (this.state.currentProject) {
-      // Find the branch in any continuity
-      for (const continuity of this.state.currentProject.continuities) {
-        if (!continuity.branches) continue; // Skip if no branches array
-        const branch = continuity.branches.find(b => b.id === branchId);
-        if (branch) {
+    if (!this.state.currentProject) return;
+
+    let changed = false;
+    for (const continuity of this.state.currentProject.continuities) {
+      if (!continuity.branches) continue;
+      continuity.branches.forEach((branch) => {
+        if (branch.id === branchId) {
           Object.assign(branch, updates);
-          this.state.currentProject.modified = Date.now();
-          this.notifyListeners();
-          return;
+          changed = true;
         }
-      }
+      });
+    }
+
+    if (changed) {
+      this.state.currentProject.modified = Date.now();
+      this.notifyListeners();
     }
   }
 

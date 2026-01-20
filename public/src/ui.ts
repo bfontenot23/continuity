@@ -6,7 +6,7 @@ import { Project, Continuity, createArc, createChapter, Arc } from './types';
 import { AppStateManager } from './state';
 
 export class UIComponents {
-  static createHeader(project: Project | null, onNewProject: () => void, onExport: () => void, onImport: (file: File) => void): HTMLElement {
+  static createHeader(project: Project | null, onNewProject: () => void, onExport: () => void, onImport: (file: File) => void, onExportPNG: () => void = () => {}): HTMLElement {
     const header = document.createElement('header');
     header.className = 'header';
     header.innerHTML = `
@@ -18,6 +18,7 @@ export class UIComponents {
         <div class="header-actions">
           <button id="new-project-btn" class="btn btn-primary">New Project</button>
           ${project ? `
+            <button id="export-png-btn" class="btn btn-secondary">Export as PNG</button>
             <button id="export-btn" class="btn btn-secondary">Export</button>
             <button id="import-btn" class="btn btn-secondary">Import</button>
           ` : ''}
@@ -26,6 +27,7 @@ export class UIComponents {
     `;
 
     header.querySelector('#new-project-btn')?.addEventListener('click', onNewProject);
+    header.querySelector('#export-png-btn')?.addEventListener('click', onExportPNG);
     header.querySelector('#export-btn')?.addEventListener('click', onExport);
     
     const importBtn = header.querySelector('#import-btn') as HTMLButtonElement;

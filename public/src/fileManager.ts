@@ -65,6 +65,22 @@ export class ContinuityFileManager {
         if (!continuity.branches) {
           continuity.branches = [];
         }
+
+        // Backfill branch defaults for older files
+        continuity.branches.forEach((branch: any) => {
+          if (!branch.lineStyle) branch.lineStyle = 'solid';
+          if (!branch.startEndpointStyle) branch.startEndpointStyle = 'dot';
+          if (!branch.endEndpointStyle) branch.endEndpointStyle = 'dot';
+        });
+      });
+    }
+
+    // Backfill line defaults for older projects
+    if (project.lines && Array.isArray(project.lines)) {
+      project.lines.forEach((line: any) => {
+        if (!line.lineStyle) line.lineStyle = 'solid';
+        if (!line.startEndpointStyle) line.startEndpointStyle = 'dot';
+        if (!line.endEndpointStyle) line.endEndpointStyle = 'dot';
       });
     }
   }
