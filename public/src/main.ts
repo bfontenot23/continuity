@@ -33,6 +33,7 @@ function initializeApp() {
       currentEditSidebar = null;
     }
     preservedSidebarState = null;
+    app?.classList.remove('app-has-sidebar');
   }
 
   function showTimelineEditSidebar(timelineId: string, autoFocus: boolean = false) {
@@ -55,6 +56,7 @@ function initializeApp() {
     );
     
     appElement.appendChild(currentEditSidebar);
+    appElement.classList.add('app-has-sidebar');
     preservedSidebarState = { type: 'timeline', id: timelineId };
   }
 
@@ -90,6 +92,7 @@ function initializeApp() {
     );
     
     appElement.appendChild(currentEditSidebar);
+    appElement.classList.add('app-has-sidebar');
     preservedSidebarState = { type: 'chapter', id: chapterId };
   }
 
@@ -122,6 +125,8 @@ function initializeApp() {
         lineStyle: foundBranch.lineStyle,
         startEndpointStyle: foundBranch.startEndpointStyle,
         endEndpointStyle: foundBranch.endEndpointStyle,
+        startChapterId: foundBranch.startChapterId,
+        endChapterId: foundBranch.endChapterId,
       },
       null, // Don't need continuity context for branches
       stateManager,
@@ -130,6 +135,7 @@ function initializeApp() {
     );
     
     appElement.appendChild(currentEditSidebar);
+    appElement.classList.add('app-has-sidebar');
     preservedSidebarState = { type: 'branch', id: branchId };
   }
 
@@ -153,6 +159,7 @@ function initializeApp() {
     );
     
     appElement.appendChild(currentEditSidebar);
+    appElement.classList.add('app-has-sidebar');
     preservedSidebarState = { type: 'textbox', id: textboxId };
   }
 
@@ -184,13 +191,53 @@ function initializeApp() {
     }
 
     // Add header (only shown when project is loaded)
+    async function handleShowAppInfo() {
+      const appInfo = await ContinuityFileManager.loadAppInfo();
+      const appElement = document.getElementById('app');
+      if (appElement) {
+        const modal = UIComponents.createAppInfoModal(appInfo);
+        appElement.appendChild(modal);
+      }
+    }
+
+    async function handleShowChangelog() {
+      const changelogContent = await ContinuityFileManager.loadChangelog();
+      const appElement = document.getElementById('app');
+      if (appElement) {
+        const modal = UIComponents.createChangelogModal(changelogContent);
+        appElement.appendChild(modal);
+      }
+    }
+
+    function handleShowSettings() {
+      const state = stateManager.getState();
+      if (!state.currentProject) return;
+
+      const appElement = document.getElementById('app');
+      if (!appElement) return;
+
+      const modal = UIComponents.createProjectSettingsModal(
+        state.currentProject,
+        (title: string, description: string) => {
+          stateManager.updateProject({
+            title,
+            description
+          });
+        }
+      );
+      appElement.appendChild(modal);
+    }
+
     mainWrapper.appendChild(
       UIComponents.createHeader(
         currentProject,
         openNewProjectModal,
         handleExport,
         handleImport,
-        handleExportPNG
+        handleExportPNG,
+        handleShowAppInfo,
+        handleShowChangelog,
+        handleShowSettings
       )
     );
 
@@ -230,9 +277,6 @@ function initializeApp() {
     });
     canvas.setBranches(Array.from(allBranches.values()));
 
-    // Set arc mode state
-    canvas.setArcMode(state.arcMode);
-
     // Setup canvas callbacks
     canvas.setOnAddTimeline(() => {
       handleAddContinuity();
@@ -265,10 +309,6 @@ function initializeApp() {
     canvas.setOnTimelineMoved((timelineId: string, x: number, y: number) => {
       // Save the new position to the state
       stateManager.updateContinuity(timelineId, { x, y });
-    });
-
-    canvas.setOnToggleArcMode(() => {
-      stateManager.toggleArcMode();
     });
 
     canvas.setOnBackgroundClick(() => {
@@ -418,9 +458,11 @@ function initializeApp() {
     const state = stateManager.getState();
     if (!state.currentProject) return;
 
-    // Find which chapters these positions correspond to
-    const startChapterId = findChapterAtPosition(startTimelineId, startPosition);
-    const endChapterId = findChapterAtPosition(endTimelineId, endPosition);
+    // Find which chapters these positions correspond to:
+    // - Start point: anchor to chapter on the LEFT (whose end is at this position)
+    // - End point: anchor to chapter on the RIGHT (whose start is at this position)
+    const startChapterId = findChapterToLeft(startTimelineId, startPosition);
+    const endChapterId = findChapterToRight(endTimelineId, endPosition);
 
     // Create branch with chapter associations
     const branch = createBranch(startTimelineId, startPosition, endTimelineId, endPosition);
@@ -437,11 +479,9 @@ function initializeApp() {
   }
 
   /**
-   * Find which chapter (if any) corresponds to a grid position on a timeline.
-   * Returns the ID of the chapter whose end position matches this position,
-   * or undefined if the position is at the tail or not on a valid chapter boundary.
+   * Find the chapter to the LEFT of a grid position (i.e., the chapter whose END is at this position)
    */
-  function findChapterAtPosition(continuityId: string, gridPosition: number): string | undefined {
+  function findChapterToLeft(continuityId: string, gridPosition: number): string | undefined {
     const state = stateManager.getState();
     if (!state.currentProject) return undefined;
 
@@ -465,6 +505,40 @@ function initializeApp() {
       
       // Check if position matches this chapter's end
       if (Math.abs(gridPosition - chapterEndPos) < 0.01) {
+        return chapter.id;
+      }
+
+      currentX += chapterWidth;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Find the chapter to the RIGHT of a grid position (i.e., the chapter whose START is at this position)
+   */
+  function findChapterToRight(continuityId: string, gridPosition: number): string | undefined {
+    const state = stateManager.getState();
+    if (!state.currentProject) return undefined;
+
+    const continuity = state.currentProject.continuities.find(c => c.id === continuityId);
+    if (!continuity) return undefined;
+
+    // Calculate chapter positions
+    const sortedChapters = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
+    let currentX = 1; // Start after Head
+
+    for (const chapter of sortedChapters) {
+      // Calculate width
+      let chapterWidth: number;
+      if (chapter.gridLength && chapter.gridLength > 0) {
+        chapterWidth = chapter.gridLength;
+      } else {
+        chapterWidth = Math.max(1, Math.ceil(chapter.title.length / 5));
+      }
+
+      // Check if position matches this chapter's start
+      if (Math.abs(gridPosition - currentX) < 0.01) {
         return chapter.id;
       }
 
@@ -529,13 +603,14 @@ function initializeApp() {
     );
     
     appElement.appendChild(currentEditSidebar);
+    appElement.classList.add('app-has-sidebar');
     preservedSidebarState = { type: 'line', id: lineId };
   }
 
-  function handleExport() {
+  async function handleExport() {
     const state = stateManager.getState();
     if (state.currentProject) {
-      ContinuityFileManager.exportProject(state.currentProject);
+      await ContinuityFileManager.exportProject(state.currentProject);
     }
   }
 
@@ -550,12 +625,32 @@ function initializeApp() {
 
   async function handleImport(file: File) {
     try {
-      const project = await ContinuityFileManager.importProject(file);
-      stateManager.setProject(project);
-      renderUI();
-      // Center on the first timeline after import
-      if (project.continuities.length > 0 && canvasInstance) {
-        canvasInstance.centerOnTimeline(project.continuities[0].id);
+      const result = await ContinuityFileManager.importProject(file);
+      const { project, versionWarning } = result;
+      
+      // If there's a version warning, show it first
+      if (versionWarning) {
+        const appElement = document.getElementById('app');
+        if (appElement) {
+          const modal = UIComponents.createVersionWarningModal(versionWarning, () => {
+            // User confirmed despite warning
+            stateManager.setProject(project);
+            renderUI();
+            // Center on the first timeline after import
+            if (project.continuities.length > 0 && canvasInstance) {
+              canvasInstance.centerOnTimeline(project.continuities[0].id);
+            }
+          });
+          appElement.appendChild(modal);
+        }
+      } else {
+        // No warning, proceed normally
+        stateManager.setProject(project);
+        renderUI();
+        // Center on the first timeline after import
+        if (project.continuities.length > 0 && canvasInstance) {
+          canvasInstance.centerOnTimeline(project.continuities[0].id);
+        }
       }
     } catch (error) {
       alert(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -611,15 +706,6 @@ function initializeApp() {
       const state = stateManager.getState();
       if (state.currentProject && canvasInstance) {
         canvasInstance.toggleInsertionMode();
-      }
-    }
-
-    // Shift + A: Toggle Arc Mode
-    if (e.shiftKey && e.key === 'A' && !isInInput) {
-      e.preventDefault();
-      const state = stateManager.getState();
-      if (state.currentProject) {
-        stateManager.toggleArcMode();
       }
     }
 

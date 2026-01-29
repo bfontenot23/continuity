@@ -6,7 +6,7 @@ import { Project, Continuity, createArc, createChapter, Arc } from './types';
 import { AppStateManager } from './state';
 
 export class UIComponents {
-  static createHeader(project: Project | null, onNewProject: () => void, onExport: () => void, onImport: (file: File) => void, onExportPNG: () => void = () => {}): HTMLElement {
+  static createHeader(project: Project | null, onNewProject: () => void, onExport: () => void, onImport: (file: File) => void, onExportPNG: () => void = () => {}, onShowAppInfo: (() => void) | null = null, onShowChangelog: (() => void) | null = null, onShowSettings: (() => void) | null = null): HTMLElement {
     const header = document.createElement('header');
     header.className = 'topbar';
     header.innerHTML = `
@@ -16,9 +16,20 @@ export class UIComponents {
             <span class="brand-title">Continuity</span>
             <span class="brand-subtitle">Story Planner & Timeline Manager</span>
           </div>
+          <button id="info-btn" class="icon-btn" title="App information" style="width: 32px; height: 32px; padding: 4px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; margin-left: 0.5rem;">
+            <img src="/assets/icons/info-circle.svg" alt="Info" style="width: 20px; height: 20px;">
+          </button>
+          <button id="changelog-btn" class="icon-btn" title="View changelog" style="width: 32px; height: 32px; padding: 4px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer;">
+            <img src="/assets/icons/changelog.svg" alt="Changelog" style="width: 20px; height: 20px;">
+          </button>
+          ${project ? `
+            <button id="settings-btn" class="icon-btn" title="Project settings" style="width: 32px; height: 32px; padding: 4px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer;">
+              <img src="/assets/icons/settings.svg" alt="Settings" style="width: 20px; height: 20px;">
+            </button>
+          ` : ''}
         </div>
         <div class="topbar-actions" role="group" aria-label="Project actions">
-          <button id="new-project-btn" class="btn btn-primary" title="Start a new project">New</button>
+          <button id="new-project-btn" class="btn btn-primary-gradient" title="Start a new project">New Project</button>
           ${project ? `
             <button id="import-btn" class="btn btn-ghost" title="Import a .cty file">Import</button>
             <div class="export-menu">
@@ -32,8 +43,118 @@ export class UIComponents {
             </div>
           ` : ''}
         </div>
+        <button id="hamburger-menu-btn" class="hamburger-menu-btn" title="Menu" aria-haspopup="true" aria-expanded="false" aria-label="Toggle menu">
+          <span class="hamburger-icon"></span>
+          <span class="hamburger-icon"></span>
+          <span class="hamburger-icon"></span>
+        </button>
+        <div class="hamburger-menu" id="hamburger-menu" role="menu">
+          <button id="hamburger-info-btn" class="hamburger-menu-item" role="menuitem">App Info</button>
+          <button id="hamburger-changelog-btn" class="hamburger-menu-item" role="menuitem">Changelog</button>
+          ${project ? `
+            <button id="hamburger-settings-btn" class="hamburger-menu-item" role="menuitem">Project Settings</button>
+          ` : ''}
+          <button id="hamburger-new-project-btn" class="hamburger-menu-item" role="menuitem">New Project</button>
+          ${project ? `
+            <button id="hamburger-import-btn" class="hamburger-menu-item" role="menuitem">Import</button>
+            <button id="hamburger-export-png-btn" class="hamburger-menu-item" role="menuitem">Export as PNG</button>
+            <button id="hamburger-export-cty-btn" class="hamburger-menu-item" role="menuitem">Export as .cty</button>
+          ` : ''}
+        </div>
       </div>
     `;
+
+    // Wire up info button (large screens)
+    if (onShowAppInfo) {
+      header.querySelector('#info-btn')?.addEventListener('click', onShowAppInfo);
+    }
+
+    // Wire up changelog button (large screens)
+    if (onShowChangelog) {
+      header.querySelector('#changelog-btn')?.addEventListener('click', onShowChangelog);
+    }
+
+    // Wire up settings button (large screens)
+    if (onShowSettings) {
+      header.querySelector('#settings-btn')?.addEventListener('click', onShowSettings);
+    }
+
+    // Hamburger menu setup (before other buttons so closeHamburgerMenu is available)
+    const hamburgerMenuBtn = header.querySelector('#hamburger-menu-btn') as HTMLButtonElement | null;
+    const hamburgerMenu = header.querySelector('#hamburger-menu') as HTMLElement | null;
+
+    let hamburgerDocClickHandler: ((e: MouseEvent) => void) | null = null;
+    let hamburgerKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
+
+    const closeHamburgerMenu = () => {
+      if (!hamburgerMenu || !hamburgerMenuBtn) return;
+      hamburgerMenu.classList.remove('open');
+      hamburgerMenuBtn.setAttribute('aria-expanded', 'false');
+      if (hamburgerDocClickHandler) {
+        document.removeEventListener('click', hamburgerDocClickHandler);
+        hamburgerDocClickHandler = null;
+      }
+      if (hamburgerKeydownHandler) {
+        document.removeEventListener('keydown', hamburgerKeydownHandler);
+        hamburgerKeydownHandler = null;
+      }
+    };
+
+    const openHamburgerMenu = () => {
+      if (!hamburgerMenu || !hamburgerMenuBtn) return;
+      hamburgerMenu.classList.add('open');
+      hamburgerMenuBtn.setAttribute('aria-expanded', 'true');
+      hamburgerDocClickHandler = (e: MouseEvent) => {
+        if (hamburgerMenu && !hamburgerMenu.contains(e.target as Node) && e.target !== hamburgerMenuBtn) {
+          closeHamburgerMenu();
+        }
+      };
+      hamburgerKeydownHandler = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          closeHamburgerMenu();
+        }
+      };
+      document.addEventListener('click', hamburgerDocClickHandler);
+      document.addEventListener('keydown', hamburgerKeydownHandler);
+    };
+
+    const toggleHamburgerMenu = () => {
+      if (!hamburgerMenu) return;
+      if (hamburgerMenu.classList.contains('open')) {
+        closeHamburgerMenu();
+      } else {
+        openHamburgerMenu();
+      }
+    };
+
+    hamburgerMenuBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleHamburgerMenu();
+    });
+
+    // Wire up hamburger info button
+    if (onShowAppInfo) {
+      header.querySelector('#hamburger-info-btn')?.addEventListener('click', () => {
+        closeHamburgerMenu();
+        onShowAppInfo();
+      });
+    }
+
+    // Wire up hamburger changelog button
+    if (onShowChangelog) {
+      header.querySelector('#hamburger-changelog-btn')?.addEventListener('click', () => {
+        closeHamburgerMenu();
+        onShowChangelog();
+      });
+    }
+
+    // Wire up hamburger settings button
+    if (onShowSettings) {
+      header.querySelector('#hamburger-settings-btn')?.addEventListener('click', () => {
+        closeHamburgerMenu();
+        onShowSettings();
+      });
+    }
 
     header.querySelector('#new-project-btn')?.addEventListener('click', onNewProject);
 
@@ -115,6 +236,48 @@ export class UIComponents {
           }
         };
         input.click();
+      });
+    }
+
+    // Wire hamburger menu items
+    const hamburgerNewProjectBtn = header.querySelector('#hamburger-new-project-btn') as HTMLButtonElement | null;
+    if (hamburgerNewProjectBtn) {
+      hamburgerNewProjectBtn.addEventListener('click', () => {
+        closeHamburgerMenu();
+        onNewProject();
+      });
+    }
+
+    const hamburgerImportBtn = header.querySelector('#hamburger-import-btn') as HTMLButtonElement | null;
+    if (hamburgerImportBtn) {
+      hamburgerImportBtn.addEventListener('click', () => {
+        closeHamburgerMenu();
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.cty,.json';
+        input.onchange = async (e) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (file) {
+            onImport(file);
+          }
+        };
+        input.click();
+      });
+    }
+
+    const hamburgerExportPngBtn = header.querySelector('#hamburger-export-png-btn') as HTMLButtonElement | null;
+    if (hamburgerExportPngBtn) {
+      hamburgerExportPngBtn.addEventListener('click', () => {
+        closeHamburgerMenu();
+        onExportPNG();
+      });
+    }
+
+    const hamburgerExportCtyBtn = header.querySelector('#hamburger-export-cty-btn') as HTMLButtonElement | null;
+    if (hamburgerExportCtyBtn) {
+      hamburgerExportCtyBtn.addEventListener('click', () => {
+        closeHamburgerMenu();
+        onExport();
       });
     }
 
@@ -414,6 +577,304 @@ export class UIComponents {
     return modal;
   }
 
+  static createVersionWarningModal(message: string, onConfirm: () => void): HTMLElement {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Project Version Mismatch</h2>
+        </div>
+        <div class="modal-body" style="text-align: center;">
+          <div style="margin-bottom: 1rem;">
+            <img src="/assets/icons/alert-triangle.svg" alt="Warning" style="width: 48px; height: 48px; margin: 0 auto 1rem; display: block;">
+          </div>
+          <p style="color: #ff6b6b; font-weight: 600; margin: 0 0 0.75rem 0; font-size: 1.1rem;">Warning</p>
+          <p style="margin: 0 0 1rem 0;">${message}</p>
+          <p style="font-size: 0.9rem; color: #666; margin: 0;">You can still continue to load the project, but some features may not work correctly. After opening, consider exporting the project again to update it to the current version.</p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="modal-cancel" class="btn btn-secondary">Cancel Import</button>
+          <button type="button" id="modal-confirm" class="btn btn-primary">Continue Anyway</button>
+        </div>
+      </div>
+    `;
+
+    const cancelBtn = modal.querySelector('#modal-cancel') as HTMLButtonElement;
+    const confirmBtn = modal.querySelector('#modal-confirm') as HTMLButtonElement;
+
+    const closeModal = () => {
+      modal.remove();
+    };
+
+    confirmBtn.addEventListener('click', () => {
+      closeModal();
+      onConfirm();
+    });
+
+    cancelBtn.addEventListener('click', closeModal);
+
+    // Close on escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+
+    // Close on overlay click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal();
+      }
+    });
+
+    return modal;
+  }
+
+  static createAppInfoModal(appInfo: { version: string; copyright?: string; license?: string; bugReportUrl?: string }): HTMLElement {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+          <h2>About Continuity</h2>
+        </div>
+        <div class="modal-body">
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <div>
+              <p style="color: #666; font-size: 0.9rem; margin: 0 0 0.25rem 0;">Version</p>
+              <p style="font-weight: 600; font-size: 1.1rem; margin: 0;">${appInfo.version}</p>
+            </div>
+            <div>
+              <p style="color: #666; font-size: 0.9rem; margin: 0 0 0.25rem 0;">License</p>
+              <p style="margin: 0;">${appInfo.license || 'N/A'}</p>
+            </div>
+            <div>
+              <p style="color: #666; font-size: 0.9rem; margin: 0 0 0.25rem 0;">Copyright</p>
+              <p style="margin: 0;">${appInfo.copyright || 'N/A'}</p>
+            </div>
+            <div>
+              <p style="color: #666; font-size: 0.9rem; margin: 0 0 0.25rem 0;">Support</p>
+              <a href="${appInfo.bugReportUrl || '#'}" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: none; font-weight: 500; display: inline-block;">Submit a bug report →</a>
+            </div>
+            <div id="kofi-container" style="text-align: center; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e0e0e0;">
+              <a href="https://ko-fi.com/S6S51T8G4I" target="_blank" rel="noopener noreferrer">
+                <img src="/assets/images/support_me_on_kofi_beige.png" alt="Support me on Ko-fi" style="height: 36px; border: none; cursor: pointer;">
+              </a>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="modal-close" class="btn btn-primary">Close</button>
+        </div>
+      </div>
+    `;
+
+    const closeBtn = modal.querySelector('#modal-close') as HTMLButtonElement;
+
+    const closeModal = () => {
+      modal.remove();
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+
+    // Close on escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+
+    // Close on overlay click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal();
+      }
+    });
+
+    return modal;
+  }
+
+  /**
+   * Convert simple markdown to HTML for changelog display
+   */
+  private static markdownToHtml(markdown: string): string {
+    // Remove escaped characters (backslash before special chars)
+    let html = markdown.replace(/\\([+\-*#\[\]()])/g, '$1');
+
+    // Escape HTML
+    html = html
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Convert markdown links [text](url) to HTML links
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: none; font-weight: 500;">$1</a>');
+
+    // Convert # headings to HTML (do this before bold/text processing)
+    html = html.replace(/^### (.*?)$/gm, '<h4 style="font-size: 1rem; font-weight: 700; margin: 0.5rem 0 0.1rem 0;">$1</h4>');
+    html = html.replace(/^## (.*?)$/gm, '<h3 style="font-size: 1.1rem; font-weight: 700; margin: 0.5rem 0 -0.4rem 0;">$1</h3>');
+    html = html.replace(/^# (.*?)$/gm, '<h2 style="font-size: 1.5rem; font-weight: 700; margin: 0 0 0.1rem 0;">$1</h2>');
+
+    // Convert bold **text**
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 700;">$1</strong>');
+
+    // Convert line breaks
+    html = html.replace(/\n\n/g, '</p><p style="margin: 0.5rem 0 0;">');
+    html = html.replace(/\n/g, '<br>');
+
+    // Convert bullet points
+    html = html.replace(/^[\+\-\*] (.*?)(?=<br>|<\/p>)/gm, '<li style="margin-left: 1.5rem; margin-bottom: 0.25rem;">$1</li>');
+    html = html.replace(/(<li[^>]*>.*?<\/li>)/s, '<ul style="list-style: disc; margin: 0.5rem 0; padding-left: 0;">$1</ul>');
+
+    // Wrap in paragraphs with negative top margin to counteract heading spacing
+    html = `<p style="margin: -0.3rem 0 0 0; padding: 0;">${html}</p>`;
+
+    return html;
+  }
+
+  static createChangelogModal(changelogContent: string): HTMLElement {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+
+    const htmlContent = this.markdownToHtml(changelogContent);
+
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 600px; max-height: 80vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <h2 style="margin: 0;">Changelog</h2>
+        </div>
+        <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 1rem;">
+          <div style="font-size: 0.95rem; line-height: 1.6; color: #333;">
+            ${htmlContent}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="modal-close" class="btn btn-primary">Close</button>
+        </div>
+      </div>
+    `;
+
+    const closeBtn = modal.querySelector('#modal-close') as HTMLButtonElement;
+
+    const closeModal = () => {
+      modal.remove();
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+
+    // Close on escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+
+    // Close on overlay click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal();
+      }
+    });
+
+    return modal;
+  }
+
+  static createProjectSettingsModal(project: Project, onSave: (title: string, description: string) => void): HTMLElement {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Project Settings</h2>
+        </div>
+        <form id="settings-form" class="modal-form" novalidate>
+          <div class="form-group">
+            <label for="project-title">Project Name</label>
+            <input 
+              type="text" 
+              id="project-title" 
+              name="project-title" 
+              placeholder="Enter project name..." 
+              value="${project.title}"
+              autofocus
+            />
+            <span id="project-title-error" class="form-error" style="display: none; color: #ff6b6b; font-size: 0.85rem; margin-top: 0.25rem;"></span>
+          </div>
+          <div class="form-group">
+            <label for="project-description">Project Description</label>
+            <textarea 
+              id="project-description" 
+              name="project-description" 
+              placeholder="Enter project description..." 
+              style="resize: vertical; min-height: 80px;"
+            >${project.description || ''}</textarea>
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="modal-cancel" class="btn btn-secondary">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    const form = modal.querySelector('#settings-form') as HTMLFormElement;
+    const titleInput = modal.querySelector('#project-title') as HTMLInputElement;
+    const descInput = modal.querySelector('#project-description') as HTMLTextAreaElement;
+    const titleError = modal.querySelector('#project-title-error') as HTMLSpanElement;
+    const cancelBtn = modal.querySelector('#modal-cancel') as HTMLButtonElement;
+
+    const closeModal = () => {
+      modal.remove();
+    };
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const title = titleInput.value.trim();
+
+      if (!title) {
+        titleError.textContent = 'Project name is required';
+        titleError.style.display = 'block';
+        titleInput.focus();
+        return;
+      }
+
+      titleError.style.display = 'none';
+      const description = descInput.value.trim();
+      closeModal();
+      onSave(title, description);
+    });
+
+    cancelBtn.addEventListener('click', closeModal);
+
+    // Close on escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+
+    // Close on overlay click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal();
+      }
+    });
+
+    return modal;
+  }
+
   static createProjectModal(onSubmit: (projectName: string) => void): HTMLElement {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
@@ -423,7 +884,7 @@ export class UIComponents {
         <div class="modal-header">
           <h2>Create New Project</h2>
         </div>
-        <form id="project-form" class="modal-form">
+        <form id="project-form" class="modal-form" novalidate>
           <div class="form-group">
             <label for="project-name">Project Name</label>
             <input 
@@ -431,9 +892,9 @@ export class UIComponents {
               id="project-name" 
               name="project-name" 
               placeholder="Enter your project name..." 
-              required
               autofocus
             />
+            <span id="project-name-error" class="form-error" style="display: none; color: #ff6b6b; font-size: 0.85rem; margin-top: 0.25rem;"></span>
           </div>
           <div class="modal-actions">
             <button type="button" id="modal-cancel" class="btn btn-secondary">Cancel</button>
@@ -445,11 +906,25 @@ export class UIComponents {
 
     const form = modal.querySelector('#project-form') as HTMLFormElement;
     const input = modal.querySelector('#project-name') as HTMLInputElement;
+    const errorSpan = modal.querySelector('#project-name-error') as HTMLSpanElement;
     const cancelBtn = modal.querySelector('#modal-cancel') as HTMLButtonElement;
 
     const closeModal = () => {
       modal.remove();
     };
+
+    const showError = () => {
+      errorSpan.textContent = 'Please enter a project name';
+      errorSpan.style.display = 'block';
+      input.style.borderColor = '#ff6b6b';
+    };
+
+    const clearError = () => {
+      errorSpan.style.display = 'none';
+      input.style.borderColor = '';
+    };
+
+    input.addEventListener('input', clearError);
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -457,6 +932,8 @@ export class UIComponents {
       if (projectName) {
         closeModal();
         onSubmit(projectName);
+      } else {
+        showError();
       }
     });
 
@@ -754,6 +1231,17 @@ export class UIComponents {
         background: #06b6d4;
       }
 
+      .topbar .btn-primary-gradient {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        font-weight: 700;
+      }
+
+      .topbar .btn-primary-gradient:hover {
+        opacity: 0.9;
+        transform: translateY(-1px);
+      }
+
       .btn-ghost {
         background: rgba(255, 255, 255, 0.08);
         color: #e2e8f0;
@@ -765,22 +1253,107 @@ export class UIComponents {
         border-color: rgba(255, 255, 255, 0.22);
       }
 
+      .hamburger-menu-btn {
+        display: none;
+        flex-direction: column;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0.5rem;
+        gap: 0.35rem;
+        margin-left: auto;
+        position: relative;
+        z-index: 11;
+      }
+
+      .hamburger-icon {
+        width: 24px;
+        height: 2px;
+        background: #e2e8f0;
+        border-radius: 2px;
+        transition: all 0.3s ease;
+        display: block;
+      }
+
+      .hamburger-menu-btn[aria-expanded="true"] .hamburger-icon:nth-child(1) {
+        transform: rotate(45deg) translateY(10px);
+      }
+
+      .hamburger-menu-btn[aria-expanded="true"] .hamburger-icon:nth-child(2) {
+        opacity: 0;
+      }
+
+      .hamburger-menu-btn[aria-expanded="true"] .hamburger-icon:nth-child(3) {
+        transform: rotate(-45deg) translateY(-10px);
+      }
+
+      .hamburger-menu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 1rem;
+        background: #0b1220;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        min-width: 200px;
+        padding: 0.25rem;
+        z-index: 10;
+      }
+
+      .hamburger-menu.open {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .hamburger-menu-item {
+        width: 100%;
+        text-align: left;
+        padding: 0.75rem 1rem;
+        background: transparent;
+        border: none;
+        color: #e2e8f0;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 0.95rem;
+        transition: background 0.2s ease;
+      }
+
+      .hamburger-menu-item:hover {
+        background: rgba(255, 255, 255, 0.08);
+      }
+
       @media (max-width: 720px) {
+        .hamburger-menu-btn {
+          display: flex;
+        }
+
+        #info-btn {
+          display: none !important;
+        }
+
+        #changelog-btn {
+          display: none !important;
+        }
+
+        #settings-btn {
+          display: none !important;
+        }
+
         .topbar-inner {
-          align-items: flex-start;
+          align-items: center;
+          position: relative;
+          flex-wrap: nowrap;
+          gap: 0.5rem;
         }
 
         .brand {
-          width: 100%;
-          justify-content: space-between;
-        }
-
-        .brand-copy {
-          flex: 1;
-          min-width: 0;
+          flex-shrink: 0;
         }
 
         .topbar-actions {
+          display: none;
           width: 100%;
           margin-left: 0;
           justify-content: flex-start;
@@ -1327,6 +1900,83 @@ export class UIComponents {
         }
       }
 
+      @media (max-width: 720px) {
+        #app {
+          display: flex;
+          flex-direction: column;
+          height: 100vh;
+        }
+
+        #app.app-has-sidebar {
+          padding-bottom: 25vh;
+        }
+
+        .main-wrapper {
+          flex: 1;
+          overflow: hidden;
+          padding-bottom: 0;
+        }
+
+        .edit-sidebar {
+          position: fixed;
+          right: 0;
+          bottom: 0;
+          left: 0;
+          top: auto;
+          width: 100%;
+          height: 25vh;
+          min-height: 250px;
+          border-top: 2px solid #e0e0e0;
+          border-radius: 12px 12px 0 0;
+          box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
+          z-index: 999;
+        }
+
+        .edit-sidebar-content {
+          flex: 1;
+          padding: 1rem;
+          overflow-y: auto;
+          overflow-x: hidden;
+        }
+
+        .edit-sidebar-header {
+          padding: 1rem;
+        }
+
+        .edit-sidebar-header h3 {
+          font-size: 1rem;
+        }
+
+        .edit-sidebar-actions {
+          padding: 1rem;
+          gap: 0.5rem;
+        }
+
+        .edit-sidebar-actions button {
+          padding: 0.4rem 0.8rem;
+          font-size: 0.85rem;
+        }
+
+        .edit-sidebar .form-group {
+          margin-bottom: 0.75rem;
+        }
+
+        .edit-sidebar label {
+          font-size: 0.85rem;
+        }
+
+        .edit-sidebar input,
+        .edit-sidebar textarea,
+        .edit-sidebar select {
+          font-size: 0.85rem;
+          padding: 0.4rem;
+        }
+
+        .edit-sidebar textarea {
+          min-height: 60px;
+        }
+      }
+
       .modal-overlay {
         position: fixed;
         top: 0;
@@ -1445,6 +2095,22 @@ export class UIComponents {
       .modal-actions .btn-secondary:hover {
         background: #e0e0e0;
       }
+
+      .textbox-overlay {
+        z-index: 1;
+      }
+
+      .form-error {
+        color: #ff6b6b;
+        font-size: 0.85rem;
+        margin-top: 0.25rem;
+        display: block;
+      }
+
+      input.has-error {
+        border-color: #ff6b6b !important;
+        background-color: #fff5f5;
+      }
     `;
     return style;
   }
@@ -1461,6 +2127,8 @@ export class UIComponents {
       lineStyle?: string;
       startEndpointStyle?: 'dot' | 'arrow' | 'none';
       endEndpointStyle?: 'dot' | 'arrow' | 'none';
+      startChapterId?: string; // For branches
+      endChapterId?: string; // For branches
       content?: string;
       fontSize?: number;
       alignX?: 'left' | 'center' | 'right';
@@ -1554,6 +2222,49 @@ export class UIComponents {
         const arcsList = document.createElement('div');
         arcsList.className = 'arcs-list';
         arcsList.id = 'arcs-list';
+        arcsList.style.minHeight = '50px'; // Ensure there's space to drop even when empty
+
+        let draggedElement: HTMLElement | null = null;
+        let placeholder: HTMLElement | null = null;
+
+        // Handle dragging over the list container for top/bottom edge cases
+        arcsList.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          if (draggedElement && placeholder && arcsList.children.length > 1) {
+            const items = Array.from(arcsList.children).filter(child => 
+              child.classList.contains('arc-item') && 
+              child !== draggedElement
+            ) as HTMLElement[];
+            
+            if (items.length > 0) {
+              const mouseY = e.clientY;
+              
+              // Check if near the top of the list
+              const firstItem = items[0];
+              const firstItemRect = firstItem.getBoundingClientRect();
+              
+              if (mouseY < firstItemRect.top) {
+                // Move placeholder to the very top
+                if (arcsList.firstChild !== placeholder) {
+                  arcsList.insertBefore(placeholder, arcsList.firstChild);
+                }
+                return;
+              }
+              
+              // Check if near the bottom of the list
+              const lastItem = items[items.length - 1];
+              const lastItemRect = lastItem.getBoundingClientRect();
+              
+              if (mouseY > lastItemRect.bottom) {
+                // Move placeholder to the very bottom
+                if (arcsList.lastChild !== placeholder) {
+                  arcsList.appendChild(placeholder);
+                }
+                return;
+              }
+            }
+          }
+        });
 
         const renderArcsList = () => {
           arcsList.innerHTML = '';
@@ -1565,9 +2276,15 @@ export class UIComponents {
             arcsList.appendChild(emptyMsg);
             emptyMsg.textContent = 'No arcs yet. Add one below.';
           } else {
-            continuity.arcs.forEach(arc => {
+            // Sort arcs by order property for consistent display
+            const sortedArcs = [...continuity.arcs].sort((a, b) => a.order - b.order);
+            
+            sortedArcs.forEach((arc, index) => {
               const arcItem = document.createElement('div');
               arcItem.className = 'arc-item';
+              arcItem.draggable = true;
+              arcItem.dataset.arcId = arc.id;
+              arcItem.dataset.arcIndex = String(index);
               arcItem.style.display = 'flex';
               arcItem.style.alignItems = 'center';
               arcItem.style.gap = '8px';
@@ -1575,6 +2292,9 @@ export class UIComponents {
               arcItem.style.padding = '8px';
               arcItem.style.borderRadius = '4px';
               arcItem.style.backgroundColor = '#f5f5f5';
+              arcItem.style.cursor = 'grab';
+              arcItem.style.transition = 'opacity 0.2s ease';
+              arcItem.style.userSelect = 'none';
 
               const colorPreview = document.createElement('div');
               colorPreview.style.width = '24px';
@@ -1582,10 +2302,12 @@ export class UIComponents {
               colorPreview.style.borderRadius = '4px';
               colorPreview.style.backgroundColor = arc.color;
               colorPreview.style.border = '1px solid #ccc';
+              colorPreview.style.pointerEvents = 'none';
               arcItem.appendChild(colorPreview);
 
               const arcName = document.createElement('span');
               arcName.style.flex = '1';
+              arcName.style.pointerEvents = 'none';
               arcName.textContent = arc.name;
               arcItem.appendChild(arcName);
 
@@ -1621,6 +2343,114 @@ export class UIComponents {
                 document.body.appendChild(confirmModal);
               });
               arcItem.appendChild(deleteBtn);
+
+              // Drag and drop event handlers
+              arcItem.addEventListener('dragstart', (e) => {
+                draggedElement = arcItem;
+                
+                // Create placeholder
+                placeholder = document.createElement('div');
+                placeholder.className = 'arc-item-placeholder';
+                placeholder.style.height = arcItem.offsetHeight + 'px';
+                placeholder.style.marginBottom = '8px';
+                placeholder.style.border = '2px dashed #667eea';
+                placeholder.style.borderRadius = '4px';
+                placeholder.style.backgroundColor = 'rgba(102, 126, 234, 0.1)';
+                
+                // Insert placeholder at original position and hide the dragged element
+                setTimeout(() => {
+                  if (draggedElement && placeholder) {
+                    draggedElement.parentNode?.insertBefore(placeholder, draggedElement);
+                    draggedElement.style.display = 'none';
+                  }
+                }, 0);
+                
+                e.dataTransfer!.effectAllowed = 'move';
+                e.dataTransfer!.setData('text/plain', String(index));
+              });
+
+              arcItem.addEventListener('dragend', () => {
+                if (draggedElement && placeholder) {
+                  // Calculate final position from placeholder location immediately
+                  const allChildren = Array.from(arcsList.children);
+                  const placeholderIndex = allChildren.indexOf(placeholder);
+                  
+                  // Count only actual arc items before the placeholder
+                  let toIndex = 0;
+                  for (let i = 0; i < placeholderIndex; i++) {
+                    if (allChildren[i].classList.contains('arc-item')) {
+                      toIndex++;
+                    }
+                  }
+                  
+                  const fromIndex = parseInt(draggedElement.dataset.arcIndex || '0');
+                  
+                  // Remove placeholder immediately
+                  placeholder.parentNode?.removeChild(placeholder);
+                  placeholder = null;
+                  
+                  // Show the element again
+                  draggedElement.style.display = 'flex';
+                  draggedElement.style.opacity = '1';
+                  draggedElement.style.cursor = 'grab';
+                  
+                  draggedElement = null;
+                  
+                  // Perform state update if position changed
+                  if (fromIndex !== toIndex) {
+                    stateManager.reorderArcs(continuity.id, fromIndex, toIndex);
+                  } else {
+                    // Even if no change, we need to re-render to clean up
+                    renderArcsList();
+                  }
+                }
+              });
+
+              arcItem.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer!.dropEffect = 'move';
+                
+                if (draggedElement && placeholder && draggedElement !== arcItem) {
+                  // Get all visible arc items (excluding the hidden dragged element and placeholder)
+                  const items = Array.from(arcsList.children).filter(child => 
+                    child.classList.contains('arc-item') && 
+                    child !== draggedElement &&
+                    !child.classList.contains('arc-item-placeholder')
+                  ) as HTMLElement[];
+                  
+                  const targetIndex = items.indexOf(arcItem);
+                  
+                  if (targetIndex !== -1) {
+                    // Determine if we're hovering over the top or bottom half of the target
+                    const rect = arcItem.getBoundingClientRect();
+                    const mouseY = e.clientY;
+                    const itemMiddle = rect.top + rect.height / 2;
+                    
+                    // Get the current position of the placeholder in all children
+                    const allChildren = Array.from(arcsList.children);
+                    const placeholderCurrentIndex = allChildren.indexOf(placeholder);
+                    const targetActualIndex = allChildren.indexOf(arcItem);
+                    
+                    if (mouseY < itemMiddle) {
+                      // Insert before this item
+                      if (placeholderCurrentIndex !== targetActualIndex) {
+                        arcItem.parentNode?.insertBefore(placeholder, arcItem);
+                      }
+                    } else {
+                      // Insert after this item
+                      const nextSiblingIndex = targetActualIndex + 1;
+                      if (placeholderCurrentIndex !== nextSiblingIndex) {
+                        arcItem.parentNode?.insertBefore(placeholder, arcItem.nextSibling);
+                      }
+                    }
+                  }
+                }
+              });
+
+              arcItem.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              });
 
               arcsList.appendChild(arcItem);
             });
@@ -1912,6 +2742,26 @@ export class UIComponents {
       });
     } else if (type === 'branch') {
       // Branch editing - description and line style fields
+      
+      // Check if this is a legacy branch (missing chapter IDs) and show warning
+      if (!data.startChapterId || !data.endChapterId) {
+        const warningDiv = document.createElement('div');
+        warningDiv.style.cssText = 'display: flex; align-items: flex-start; gap: 8px; padding: 12px; background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.3); border-radius: 4px; margin-bottom: 16px;';
+        
+        const warningIcon = document.createElement('img');
+        warningIcon.src = '/assets/icons/alert-triangle-yellow.svg';
+        warningIcon.style.cssText = 'width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px;';
+        warningIcon.alt = 'Warning';
+        
+        const warningText = document.createElement('div');
+        warningText.style.cssText = 'color: #f59e0b; font-size: 13px; line-height: 1.5;';
+        warningText.textContent = 'This branch was created in an outdated version of Continuity and may exhibit incorrect behavior. Please recreate the branch to ensure proper function.';
+        
+        warningDiv.appendChild(warningIcon);
+        warningDiv.appendChild(warningText);
+        content.appendChild(warningDiv);
+      }
+      
       const descGroup = document.createElement('div');
       descGroup.className = 'form-group';
       

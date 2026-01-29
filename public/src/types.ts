@@ -78,6 +78,7 @@ export interface Project {
   description?: string;
   created: number;
   modified: number;
+  appVersion?: string; // Version of the app that exported this file
   continuities: Continuity[];
   textboxes: Textbox[]; // Free-floating textboxes with markdown support
   lines: Line[]; // Free-floating lines with grid-locked positions
@@ -182,8 +183,8 @@ export function createBranch(
     endContinuityId,
     endPosition,
     lineStyle: 'solid',
-    startEndpointStyle: 'dot',
-    endEndpointStyle: 'dot',
+    startEndpointStyle: 'none',
+    endEndpointStyle: 'arrow',
   };
 }
 
@@ -220,8 +221,8 @@ export function createLine(
     gridX2,
     gridY2,
     lineStyle: 'solid',
-    startEndpointStyle: 'dot',
-    endEndpointStyle: 'dot',
+    startEndpointStyle: 'none',
+    endEndpointStyle: 'none',
   };
 }
 

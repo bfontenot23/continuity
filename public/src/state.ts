@@ -14,7 +14,6 @@ export interface AppState {
   selectedBranchId: string | null;
   selectedTextboxId: string | null;
   selectedLineId: string | null;
-  arcMode: boolean;
 }
 
 export class AppStateManager {
@@ -29,7 +28,6 @@ export class AppStateManager {
       selectedBranchId: null,
       selectedTextboxId: null,
       selectedLineId: null,
-      arcMode: false,
     };
   }
 
@@ -118,6 +116,10 @@ export class AppStateManager {
         const maxTimestamp = continuity.chapters.reduce((max, ch) => Math.max(max, ch.timestamp), 0);
         chapter.timestamp = maxTimestamp + 1;
         continuity.chapters.push(chapter);
+        
+        // Recalculate branch positions since chapter layout changed
+        this.recalculateBranchPositions(continuity);
+        
         this.state.currentProject.modified = Date.now();
         this.notifyListeners();
       }
@@ -155,6 +157,9 @@ export class AppStateManager {
           continuity.chapters.push(chapter);
         }
         
+        // Recalculate branch positions since chapter layout changed
+        this.recalculateBranchPositions(continuity);
+        
         this.state.currentProject.modified = Date.now();
         this.notifyListeners();
       }
@@ -168,8 +173,9 @@ export class AppStateManager {
         const chapter = continuity.chapters.find(ch => ch.id === chapterId);
         if (chapter) {
           Object.assign(chapter, updates);
-          // If gridLength changed, recalculate branch positions on this timeline
-          if ('gridLength' in updates && continuity.branches) {
+          // If gridLength or timestamp changed, recalculate branch positions on this timeline
+          // timestamp changes mean chapter reordering, which affects branch positions
+          if (('gridLength' in updates || 'timestamp' in updates) && continuity.branches) {
             this.recalculateBranchPositions(continuity);
           }
           this.state.currentProject.modified = Date.now();
@@ -180,12 +186,49 @@ export class AppStateManager {
   }
 
   /**
+   * Update branch chapter references when a chapter is deleted.
+   * - For start points: Link to the chapter immediately BEFORE the deleted chapter
+   * - For end points: Link to the chapter immediately AFTER the deleted chapter
+   */
+  private updateBranchReferencesAfterChapterDeletion(continuity: Continuity, deletedChapterId: string): void {
+    if (!this.state.currentProject) return;
+
+    // Find the deleted chapter's position in the sequence
+    const sortedChapters = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
+    const deletedIndex = sortedChapters.findIndex(ch => ch.id === deletedChapterId);
+    if (deletedIndex === -1) return;
+
+    // Get adjacent chapters
+    const chapterBefore = deletedIndex > 0 ? sortedChapters[deletedIndex - 1] : undefined;
+    const chapterAfter = deletedIndex < sortedChapters.length - 1 ? sortedChapters[deletedIndex + 1] : undefined;
+
+    // Update all branches in all continuities that reference the deleted chapter
+    this.state.currentProject.continuities.forEach(cont => {
+      if (!cont.branches) return;
+      
+      cont.branches.forEach(branch => {
+        // Update start chapter reference if it matches deleted chapter
+        // Start point should link to chapter BEFORE deleted chapter
+        if (branch.startContinuityId === continuity.id && branch.startChapterId === deletedChapterId) {
+          branch.startChapterId = chapterBefore?.id; // Will be undefined if no chapter before
+        }
+        
+        // Update end chapter reference if it matches deleted chapter
+        // End point should link to chapter AFTER deleted chapter
+        if (branch.endContinuityId === continuity.id && branch.endChapterId === deletedChapterId) {
+          branch.endChapterId = chapterAfter?.id; // Will be undefined if no chapter after
+        }
+      });
+    });
+  }
+
+  /**
    * Recalculate branch positions when chapter widths change.
    * Branches store chapter IDs to maintain their associations even when
    * the timeline layout changes due to chapter gridLength modifications.
    */
   private recalculateBranchPositions(continuity: Continuity): void {
-    if (!continuity.branches || continuity.branches.length === 0) return;
+    if (!this.state.currentProject) return;
 
     // Helper to calculate chapter positions
     const getChapterPositions = (chapters: Chapter[]) => {
@@ -208,33 +251,32 @@ export class AppStateManager {
       return { positions, tailPosition: currentX };
     };
 
-    // Update branches that reference this continuity
-    continuity.branches.forEach(branch => {
-      // Recalculate start position if branch starts on this continuity
-      if (branch.startContinuityId === continuity.id) {
-        if (branch.startChapterId) {
-          // Branch is anchored to a specific chapter - update position
-          const { positions } = getChapterPositions(continuity.chapters);
+    // Get positions for this continuity
+    const { positions } = getChapterPositions(continuity.chapters);
+
+    // Update ALL branches in ALL continuities that reference this continuity
+    this.state.currentProject.continuities.forEach(cont => {
+      if (!cont.branches) return;
+      
+      cont.branches.forEach(branch => {
+        // Recalculate start position if branch starts on this continuity
+        if (branch.startContinuityId === continuity.id && branch.startChapterId) {
+          // Branch is anchored to left chapter - update to chapter's END position
           const chapterPos = positions.get(branch.startChapterId);
           if (chapterPos) {
             branch.startPosition = chapterPos.x + chapterPos.width;
           }
         }
-        // If no chapter ID, position stays as-is (was at tail or intermediate point)
-      }
-      
-      // Recalculate end position if branch ends on this continuity
-      if (branch.endContinuityId === continuity.id) {
-        if (branch.endChapterId) {
-          // Branch is anchored to a specific chapter - update position
-          const { positions } = getChapterPositions(continuity.chapters);
+        
+        // Recalculate end position if branch ends on this continuity
+        if (branch.endContinuityId === continuity.id && branch.endChapterId) {
+          // Branch is anchored to right chapter - update to chapter's START position
           const chapterPos = positions.get(branch.endChapterId);
           if (chapterPos) {
-            branch.endPosition = chapterPos.x + chapterPos.width;
+            branch.endPosition = chapterPos.x;
           }
         }
-        // If no chapter ID, position stays as-is (was at tail or intermediate point)
-      }
+      });
     });
   }
 
@@ -242,10 +284,17 @@ export class AppStateManager {
     if (this.state.currentProject) {
       const continuity = this.state.currentProject.continuities.find(c => c.id === continuityId);
       if (continuity) {
+        // Before removing, update any branches that reference this chapter
+        this.updateBranchReferencesAfterChapterDeletion(continuity, chapterId);
+        
         continuity.chapters = continuity.chapters.filter(ch => ch.id !== chapterId);
         if (this.state.selectedChapterId === chapterId) {
           this.state.selectedChapterId = null;
         }
+        
+        // Recalculate branch positions since chapter layout changed
+        this.recalculateBranchPositions(continuity);
+        
         this.state.currentProject.modified = Date.now();
         this.notifyListeners();
       }
@@ -293,6 +342,9 @@ export class AppStateManager {
         sortedChapters.forEach((ch, index) => {
           ch.timestamp = index + 1;
         });
+
+        // Recalculate branch positions since chapter layout changed
+        this.recalculateBranchPositions(continuity);
 
         this.state.currentProject.modified = Date.now();
         this.notifyListeners();
@@ -343,6 +395,28 @@ export class AppStateManager {
           // Remove all chapters in deleted arc if no arcs remain
           continuity.chapters = continuity.chapters.filter(ch => ch.arcId !== arcId);
         }
+        this.state.currentProject.modified = Date.now();
+        this.notifyListeners();
+      }
+    }
+  }
+
+  reorderArcs(continuityId: string, fromIndex: number, toIndex: number): void {
+    if (this.state.currentProject) {
+      const continuity = this.state.currentProject.continuities.find(c => c.id === continuityId);
+      if (continuity && fromIndex !== toIndex) {
+        // Sort arcs by current order
+        const sortedArcs = [...continuity.arcs].sort((a, b) => a.order - b.order);
+        
+        // Move the arc from fromIndex to toIndex
+        const [movedArc] = sortedArcs.splice(fromIndex, 1);
+        sortedArcs.splice(toIndex, 0, movedArc);
+        
+        // Reassign order values
+        sortedArcs.forEach((arc, index) => {
+          arc.order = index;
+        });
+        
         this.state.currentProject.modified = Date.now();
         this.notifyListeners();
       }
@@ -542,16 +616,6 @@ export class AppStateManager {
       this.state.currentProject.modified = Date.now();
       this.notifyListeners();
     }
-  }
-
-  toggleArcMode(): void {
-    this.state.arcMode = !this.state.arcMode;
-    this.notifyListeners();
-  }
-
-  setArcMode(enabled: boolean): void {
-    this.state.arcMode = enabled;
-    this.notifyListeners();
   }
 
   /**

@@ -1,6 +1,6 @@
 {
   "name": "continuity",
-  "version": "0.1.0",
+  "version": "26.1.2",
   "description": "A web app for planning interconnected stories with branching continuities",
   "type": "module",
   "scripts": {

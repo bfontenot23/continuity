@@ -26,6 +26,8 @@ export interface TimelineChapter {
 export class TimelineCanvas {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  private menuCanvas: HTMLCanvasElement;
+  private menuCtx: CanvasRenderingContext2D;
   private container: HTMLElement;
   
   // Camera/viewport
@@ -89,8 +91,7 @@ export class TimelineCanvas {
   private branchHoveredPoint: { timelineId: string | null; position: number } = { timelineId: null, position: -1 };
   private branches: any[] = []; // Will store all branches for rendering
   
-  // Arc mode
-  private arcMode: boolean = false;
+  // Arc data
   private timelineArcs: Map<string, any[]> = new Map(); // timelineId -> arcs
   
   // Textboxes
@@ -162,7 +163,6 @@ export class TimelineCanvas {
   private onTimelineHovered: ((timelineId: string | null, position: 'above' | 'below') => void) | null = null;
   private onTimelineMoved: ((timelineId: string, x: number, y: number) => void) | null = null;
   private onReorderArc: ((timelineId: string, arcId: string, newPosition: number) => void) | null = null;
-  private onToggleArcMode: (() => void) | null = null;
   private onBackgroundClick: (() => void) | null = null;
   private onTextboxMoved: ((textboxId: string, x: number, y: number) => void) | null = null;
   private onTextboxResized: ((textboxId: string, width: number, height: number) => void) | null = null;
@@ -174,6 +174,10 @@ export class TimelineCanvas {
     this.container = container;
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d')!;
+    
+    // Create separate canvas for menu
+    this.menuCanvas = document.createElement('canvas');
+    this.menuCtx = this.menuCanvas.getContext('2d')!;
     
     // Create overlay container for textboxes
     this.textboxOverlayContainer = document.createElement('div');
@@ -199,7 +203,19 @@ export class TimelineCanvas {
     this.canvas.style.position = 'absolute';
     this.canvas.style.top = '0';
     this.canvas.style.left = '0';
+    this.canvas.style.zIndex = '1';
     this.container.appendChild(this.canvas);
+    
+    // Setup menu canvas above the main canvas
+    this.menuCanvas.width = this.container.clientWidth;
+    this.menuCanvas.height = this.container.clientHeight;
+    this.menuCanvas.style.display = 'block';
+    this.menuCanvas.style.position = 'absolute';
+    this.menuCanvas.style.top = '0';
+    this.menuCanvas.style.left = '0';
+    this.menuCanvas.style.zIndex = '5';
+    this.menuCanvas.style.pointerEvents = 'none';
+    this.container.appendChild(this.menuCanvas);
     
     // Add overlay container for textboxes (non-interactive; events go to canvas)
     if (this.textboxOverlayContainer) {
@@ -279,9 +295,6 @@ export class TimelineCanvas {
             this.lineInsertionMode = !this.lineInsertionMode;
             this.lineFirstPoint = null;
             this.lineHoveredPoint = null;
-          } else if (clickedOptionId === 'arc-mode' && this.onToggleArcMode) {
-            // Toggle arc mode
-            this.onToggleArcMode();
           } else if (clickedOptionId === 'new-textbox' && this.onAddTextbox) {
             // Create textbox at center of canvas
             const centerX = (this.canvas.width / 2 - this.offsetX) / this.zoom;
@@ -1087,6 +1100,8 @@ export class TimelineCanvas {
     window.addEventListener('resize', () => {
       this.canvas.width = this.container.clientWidth;
       this.canvas.height = this.container.clientHeight;
+      this.menuCanvas.width = this.container.clientWidth;
+      this.menuCanvas.height = this.container.clientHeight;
       this.render();
     });
   }
@@ -1288,10 +1303,6 @@ export class TimelineCanvas {
     this.onTimelineMoved = callback;
   }
 
-  setOnToggleArcMode(callback: () => void): void {
-    this.onToggleArcMode = callback;
-  }
-
   setOnBackgroundClick(callback: () => void): void {
     this.onBackgroundClick = callback;
   }
@@ -1389,14 +1400,10 @@ export class TimelineCanvas {
     const originalSuppressMenuRender = this.suppressMenuRender;
     const wasMenuOpen = this.menu.isOpen();
     const originalSuppressTextboxRender = this.suppressTextboxRender;
-    const originalArcMode = this.arcMode;
 
     // Switch to offscreen rendering context
     this.canvas = tempCanvas;
     this.ctx = tempCtx;
-
-    // Force arc mode so arcs/titles are visible
-    this.arcMode = true;
 
     // Position viewport so all content fits with padding
     this.zoom = 1;
@@ -1422,7 +1429,6 @@ export class TimelineCanvas {
     this.zoom = originalZoom;
     this.suppressMenuRender = originalSuppressMenuRender;
     this.suppressTextboxRender = originalSuppressTextboxRender;
-    this.arcMode = originalArcMode;
     if (wasMenuOpen) {
       this.menu.open();
     }
@@ -1455,11 +1461,6 @@ export class TimelineCanvas {
 
   setBranches(branches: any[]): void {
     this.branches = branches;
-    this.render();
-  }
-
-  setArcMode(enabled: boolean): void {
-    this.arcMode = enabled;
     this.render();
   }
 
@@ -1752,10 +1753,17 @@ export class TimelineCanvas {
       this.drawTextboxes();
     }
 
-    // Draw menu unless suppressed (e.g., during PNG export)
+    // Draw menu on separate canvas unless suppressed (e.g., during PNG export)
     if (!this.suppressMenuRender) {
-      this.menu.render(this.ctx, this.canvas.height, this.hoveredMenuOptionId);
+      this.renderMenuCanvas();
     }
+  }
+
+  private renderMenuCanvas(): void {
+    // Clear menu canvas
+    this.menuCtx.clearRect(0, 0, this.menuCanvas.width, this.menuCanvas.height);
+    // Render menu to menu canvas
+    this.menu.render(this.menuCtx, this.menuCanvas.height, this.hoveredMenuOptionId);
   }
 
   private drawGrid(): void {
@@ -1785,11 +1793,8 @@ export class TimelineCanvas {
   }
 
   private drawTimelines(): void {
-    if (this.arcMode) {
-      this.drawTimelinesArcMode();
-    } else {
-      this.drawTimelinesNormalMode();
-    }
+    // Always use arc mode rendering
+    this.drawTimelinesArcMode();
 
     // Draw branches
     this.drawBranches();
@@ -1853,150 +1858,6 @@ export class TimelineCanvas {
     }
 
     return false;
-  }
-
-  private drawTimelinesNormalMode(): void {
-    this.timelines.forEach(timeline => {
-      const screenX = timeline.x * this.zoom + this.offsetX;
-      const screenY = timeline.y * this.zoom + this.offsetY;
-      const chapterSegmentWidth = this.gridSize * this.zoom; // One gridspace per chapter
-      
-      // Check if we should hide the tail (branch starts at end)
-      const shouldHideTailNormal = this.shouldHideTailForTimeline(timeline.id);
-      
-      // Check if we should hide the head (branch ends at start)
-      const shouldHideHeadNormal = this.shouldHideHeadForTimeline(timeline.id);
-      
-      // Calculate line start position
-      let lineStartX = screenX;
-      if (shouldHideHeadNormal && timeline.chapters && timeline.chapters.length > 0) {
-        // Start from first real chapter instead of timeline start
-        const firstRealChapter = timeline.chapters.find(ch => ch.title !== 'Head');
-        if (firstRealChapter) {
-          lineStartX = screenX + (firstRealChapter.x * chapterSegmentWidth);
-        }
-      }
-      
-      // Calculate line end position based on last chapter
-      let lineEndX = screenX + (timeline.width * this.zoom);
-      if (timeline.chapters && timeline.chapters.length > 0) {
-        let lastChapter = timeline.chapters[timeline.chapters.length - 1];
-        
-        // If hiding tail, use the last real chapter instead of Tail
-        if (shouldHideTailNormal) {
-          const lastRealChapter = [...timeline.chapters].reverse().find(ch => ch.title !== 'Head' && ch.title !== 'Tail');
-          if (lastRealChapter) {
-            lastChapter = lastRealChapter;
-          }
-        }
-        
-        lineEndX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth) + (shouldHideTailNormal ? 0 : 20); // No gap if tail hidden
-      }
-
-      // Draw horizontal timeline line through all chapters
-      this.ctx.strokeStyle = '#333333';
-      this.ctx.lineWidth = 3;
-      this.ctx.beginPath();
-      this.ctx.moveTo(lineStartX, screenY);
-      this.ctx.lineTo(lineEndX, screenY);
-      this.ctx.stroke();
-
-      // Draw chapters/segments as extensions of the timeline
-      if (timeline.chapters) {
-        timeline.chapters.forEach(chapter => {
-          // Skip drawing for Head and Tail chapters
-          if (chapter.title === 'Head' || chapter.title === 'Tail') {
-            return;
-          }
-          
-          const chapterScreenX = screenX + (chapter.x * chapterSegmentWidth);
-          const chapterScreenWidth = chapter.width * chapterSegmentWidth;
-          const tickHeight = 8;
-          
-          // Draw tick marks at chapter start and end
-          this.ctx.strokeStyle = '#333333';
-          this.ctx.lineWidth = 2;
-          
-          // Start tick
-          this.ctx.beginPath();
-          this.ctx.moveTo(chapterScreenX, screenY - tickHeight);
-          this.ctx.lineTo(chapterScreenX, screenY + tickHeight);
-          this.ctx.stroke();
-          
-          // End tick
-          this.ctx.beginPath();
-          this.ctx.moveTo(chapterScreenX + chapterScreenWidth, screenY - tickHeight);
-          this.ctx.lineTo(chapterScreenX + chapterScreenWidth, screenY + tickHeight);
-          this.ctx.stroke();
-          
-          // Draw chapter title above the timeline
-          this.ctx.fillStyle = '#333333';
-          this.ctx.font = '12px sans-serif';
-          this.ctx.textBaseline = 'bottom';
-          this.ctx.textAlign = 'center';
-          
-          // Truncate text if too long
-          const maxTextWidth = chapterScreenWidth - 4;
-          const textX = chapterScreenX + chapterScreenWidth / 2;
-          const textY = screenY - tickHeight - 4;
-          
-          let displayText = chapter.title;
-          const metrics = this.ctx.measureText(displayText);
-          if (metrics.width > maxTextWidth) {
-            while (displayText.length > 0 && this.ctx.measureText(displayText + '...').width > maxTextWidth) {
-              displayText = displayText.slice(0, -1);
-            }
-            displayText += '...';
-          }
-          this.ctx.fillText(displayText, textX, textY);
-        });
-      }
-
-      // Draw arrow at the end - dynamic based on last chapter
-      // But hide if a branch starts at the end position (branch becomes the new "tail")
-      const shouldHideTail = this.shouldHideTailForTimeline(timeline.id);
-      
-      if (!shouldHideTail) {
-        const arrowSize = 12;
-        let arrowStartX = screenX;
-        let arrowEndX = screenX;
-        
-        // Arrow starts from after the last chapter and extends to the calculated width
-        if (timeline.chapters && timeline.chapters.length > 0) {
-          const lastChapter = timeline.chapters[timeline.chapters.length - 1];
-          arrowStartX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth);
-          arrowEndX = arrowStartX + 20; // Small gap after last chapter
-        }
-        
-        const arrowY = screenY;
-        
-        // Draw line from last chapter to arrow
-        this.ctx.strokeStyle = '#333333';
-        this.ctx.lineWidth = 3;
-        this.ctx.beginPath();
-        this.ctx.moveTo(arrowStartX, arrowY);
-        this.ctx.lineTo(arrowEndX - arrowSize, arrowY);
-        this.ctx.stroke();
-        
-        // Draw arrow head
-        this.ctx.fillStyle = '#333333';
-        this.ctx.beginPath();
-        this.ctx.moveTo(arrowEndX, arrowY);
-        this.ctx.lineTo(arrowEndX - arrowSize, arrowY - arrowSize / 2);
-        this.ctx.lineTo(arrowEndX - arrowSize, arrowY + arrowSize / 2);
-        this.ctx.closePath();
-        this.ctx.fill();
-      }
-
-      // Draw timeline title (clickable for editing)
-      // Position to the left of timeline, right-aligned with fixed gap
-      this.ctx.fillStyle = '#333333';
-      this.ctx.font = '14px sans-serif';
-      this.ctx.textBaseline = 'middle';
-      this.ctx.textAlign = 'right';
-      const titleGap = 10; // Fixed distance from timeline start
-      this.ctx.fillText(timeline.name, screenX - titleGap, screenY);
-    });
   }
 
   private drawTimelinesArcMode(): void {
@@ -2844,9 +2705,7 @@ export class TimelineCanvas {
   }
 
   private isDraggableArcElement(mouseX: number, mouseY: number): { timelineId: string; arcId: string; order: number } | null {
-    // Only allow arc dragging in arc mode
-    if (!this.arcMode) return null;
-
+    // Arc dragging is always enabled
     const chapterSegmentWidth = this.gridSize * this.zoom;
 
     for (const timeline of this.timelines) {
@@ -2916,8 +2775,8 @@ export class TimelineCanvas {
   }
 
   private getHoveredArcInsertionPoint(mouseX: number, mouseY: number): { timelineId: string | null; position: number } {
-    // Only show arc insertion points in arc mode when dragging
-    if (!this.arcMode || !this.isDraggingArc) return { timelineId: null, position: -1 };
+    // Only show arc insertion points when dragging
+    if (!this.isDraggingArc) return { timelineId: null, position: -1 };
 
     const hitRadius = 15;
     const chapterSegmentWidth = this.gridSize * this.zoom;
@@ -3642,7 +3501,6 @@ class MenuSystem {
   private options: { id: string; label: string; keybind?: string }[] = [
     { id: 'new-timeline', label: 'New Timeline', keybind: 'Shift + T' },
     { id: 'new-chapter', label: 'New Chapter', keybind: 'Shift + C' },
-    { id: 'arc-mode', label: 'Toggle Arc Mode', keybind: 'Shift + A' },
     { id: 'new-branch', label: 'New Branch', keybind: 'Shift + B' },
     { id: 'new-textbox', label: 'New Textbox', keybind: 'Shift + S' },
     { id: 'new-line', label: 'New Line', keybind: 'Shift + D' }
