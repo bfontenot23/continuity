@@ -275,9 +275,6 @@ function initializeApp() {
     });
     canvas.setBranches(Array.from(allBranches.values()));
 
-    // Set arc mode state
-    canvas.setArcMode(state.arcMode);
-
     // Setup canvas callbacks
     canvas.setOnAddTimeline(() => {
       handleAddContinuity();
@@ -310,10 +307,6 @@ function initializeApp() {
     canvas.setOnTimelineMoved((timelineId: string, x: number, y: number) => {
       // Save the new position to the state
       stateManager.updateContinuity(timelineId, { x, y });
-    });
-
-    canvas.setOnToggleArcMode(() => {
-      stateManager.toggleArcMode();
     });
 
     canvas.setOnBackgroundClick(() => {
@@ -677,15 +670,6 @@ function initializeApp() {
       const state = stateManager.getState();
       if (state.currentProject && canvasInstance) {
         canvasInstance.toggleInsertionMode();
-      }
-    }
-
-    // Shift + A: Toggle Arc Mode
-    if (e.shiftKey && e.key === 'A' && !isInInput) {
-      e.preventDefault();
-      const state = stateManager.getState();
-      if (state.currentProject) {
-        stateManager.toggleArcMode();
       }
     }
 

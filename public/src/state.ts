@@ -14,7 +14,6 @@ export interface AppState {
   selectedBranchId: string | null;
   selectedTextboxId: string | null;
   selectedLineId: string | null;
-  arcMode: boolean;
 }
 
 export class AppStateManager {
@@ -29,7 +28,6 @@ export class AppStateManager {
       selectedBranchId: null,
       selectedTextboxId: null,
       selectedLineId: null,
-      arcMode: false,
     };
   }
 
@@ -542,16 +540,6 @@ export class AppStateManager {
       this.state.currentProject.modified = Date.now();
       this.notifyListeners();
     }
-  }
-
-  toggleArcMode(): void {
-    this.state.arcMode = !this.state.arcMode;
-    this.notifyListeners();
-  }
-
-  setArcMode(enabled: boolean): void {
-    this.state.arcMode = enabled;
-    this.notifyListeners();
   }
 
   /**

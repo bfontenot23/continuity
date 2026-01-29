@@ -6,7 +6,7 @@ A lightweight, client-side story planning tool for writers managing complex narr
 
 - **Multiple Timelines** – Create distinct story timelines and alternate narratives within one project
 - **Interactive Canvas** – Drag-and-drop chapters, timelines, and annotations with pan and zoom controls
-- **Arc Visualization** – Toggle arc mode to see chapters grouped by narrative arcs with color coding
+- **Arc Visualization** – Chapters grouped by narrative arcs with color coding
 - **Rich Chapter Details** – Customizable title, timestamp, description, content, and grid width
 - **Branches** – Visual connections between timelines showing narrative splits and merges
 - **Annotations** – Add textboxes (markdown), lines, and visual connectors anywhere on canvas
@@ -73,16 +73,15 @@ Chapters are individual story beats on your timeline:
 
 ### Organize with Arcs
 Arcs group adjacent chapters into narrative sections (e.g., "Act 1", "Rising Action"):
-- **Toggle Arc Mode** – Press `Shift + A` to show/hide arc visualization
 - **Create** – Use the "Add Arc" button in the sidebar
 - **Assign Chapters** – Select an arc in the chapter editor
-- **Reorder** – In arc mode, drag arc groups to rearrange
+- **Reorder** – Drag arc groups to rearrange
 - **Color-Coded** – Each arc appears as a colored segment on the timeline
 
 ### Canvas Navigation
 - **Pan** – Click and drag the background to move around
 - **Zoom** – Scroll to zoom in/out
-- **Insert Mode** – `Shift + C` for chapters, `Shift + A` for arcs, `Shift + B` for branches
+- **Insert Mode** – `Shift + C` for chapters, `Shift + B` for branches
 
 ### Add Annotations
 **Textboxes** – Free-floating text notes with markdown support:
@@ -116,7 +115,6 @@ Click **Export** to access export options:
 ### Keyboard Shortcuts
 - `Shift + T` – New Timeline
 - `Shift + C` – Toggle Chapter Insertion Mode
-- `Shift + A` – Toggle Arc Mode
 - `Shift + B` – Toggle Branch Insertion Mode
 - `Shift + S` – Add Textbox
 - `Shift + D` – Toggle Line Insertion Mode
