@@ -26,6 +26,8 @@ export interface TimelineChapter {
 export class TimelineCanvas {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  private menuCanvas: HTMLCanvasElement;
+  private menuCtx: CanvasRenderingContext2D;
   private container: HTMLElement;
   
   // Camera/viewport
@@ -175,6 +177,10 @@ export class TimelineCanvas {
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d')!;
     
+    // Create separate canvas for menu
+    this.menuCanvas = document.createElement('canvas');
+    this.menuCtx = this.menuCanvas.getContext('2d')!;
+    
     // Create overlay container for textboxes
     this.textboxOverlayContainer = document.createElement('div');
     this.textboxOverlayContainer.style.position = 'absolute';
@@ -199,7 +205,19 @@ export class TimelineCanvas {
     this.canvas.style.position = 'absolute';
     this.canvas.style.top = '0';
     this.canvas.style.left = '0';
+    this.canvas.style.zIndex = '1';
     this.container.appendChild(this.canvas);
+    
+    // Setup menu canvas above the main canvas
+    this.menuCanvas.width = this.container.clientWidth;
+    this.menuCanvas.height = this.container.clientHeight;
+    this.menuCanvas.style.display = 'block';
+    this.menuCanvas.style.position = 'absolute';
+    this.menuCanvas.style.top = '0';
+    this.menuCanvas.style.left = '0';
+    this.menuCanvas.style.zIndex = '5';
+    this.menuCanvas.style.pointerEvents = 'none';
+    this.container.appendChild(this.menuCanvas);
     
     // Add overlay container for textboxes (non-interactive; events go to canvas)
     if (this.textboxOverlayContainer) {
@@ -1087,6 +1105,8 @@ export class TimelineCanvas {
     window.addEventListener('resize', () => {
       this.canvas.width = this.container.clientWidth;
       this.canvas.height = this.container.clientHeight;
+      this.menuCanvas.width = this.container.clientWidth;
+      this.menuCanvas.height = this.container.clientHeight;
       this.render();
     });
   }
@@ -1752,10 +1772,17 @@ export class TimelineCanvas {
       this.drawTextboxes();
     }
 
-    // Draw menu unless suppressed (e.g., during PNG export)
+    // Draw menu on separate canvas unless suppressed (e.g., during PNG export)
     if (!this.suppressMenuRender) {
-      this.menu.render(this.ctx, this.canvas.height, this.hoveredMenuOptionId);
+      this.renderMenuCanvas();
     }
+  }
+
+  private renderMenuCanvas(): void {
+    // Clear menu canvas
+    this.menuCtx.clearRect(0, 0, this.menuCanvas.width, this.menuCanvas.height);
+    // Render menu to menu canvas
+    this.menu.render(this.menuCtx, this.menuCanvas.height, this.hoveredMenuOptionId);
   }
 
   private drawGrid(): void {

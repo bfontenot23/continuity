@@ -182,8 +182,8 @@ export function createBranch(
     endContinuityId,
     endPosition,
     lineStyle: 'solid',
-    startEndpointStyle: 'dot',
-    endEndpointStyle: 'dot',
+    startEndpointStyle: 'none',
+    endEndpointStyle: 'arrow',
   };
 }
 
@@ -220,8 +220,8 @@ export function createLine(
     gridX2,
     gridY2,
     lineStyle: 'solid',
-    startEndpointStyle: 'dot',
-    endEndpointStyle: 'dot',
+    startEndpointStyle: 'none',
+    endEndpointStyle: 'none',
   };
 }
 

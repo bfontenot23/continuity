@@ -18,7 +18,7 @@ export class UIComponents {
           </div>
         </div>
         <div class="topbar-actions" role="group" aria-label="Project actions">
-          <button id="new-project-btn" class="btn btn-primary" title="Start a new project">New</button>
+          <button id="new-project-btn" class="btn btn-primary-gradient" title="Start a new project">New Project</button>
           ${project ? `
             <button id="import-btn" class="btn btn-ghost" title="Import a .cty file">Import</button>
             <div class="export-menu">
@@ -754,6 +754,17 @@ export class UIComponents {
         background: #06b6d4;
       }
 
+      .topbar .btn-primary-gradient {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        font-weight: 700;
+      }
+
+      .topbar .btn-primary-gradient:hover {
+        opacity: 0.9;
+        transform: translateY(-1px);
+      }
+
       .btn-ghost {
         background: rgba(255, 255, 255, 0.08);
         color: #e2e8f0;
@@ -1444,6 +1455,10 @@ export class UIComponents {
 
       .modal-actions .btn-secondary:hover {
         background: #e0e0e0;
+      }
+
+      .textbox-overlay {
+        z-index: 1;
       }
     `;
     return style;
