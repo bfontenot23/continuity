@@ -5,6 +5,9 @@ import { Project } from './types';
  * These are JSON-based custom format files
  */
 
+// Default version for old imported files that don't have an appVersion
+const DEFAULT_OLD_VERSION = '26.1.1';
+
 export class ContinuityFileManager {
   private static appInfo: { version: string; copyright?: string; license?: string; bugReportUrl?: string } | null = null;
   
@@ -12,7 +15,7 @@ export class ContinuityFileManager {
    * Load app info from app_info.json
    */
   static async loadAppInfo(): Promise<{ version: string; copyright?: string; license?: string; bugReportUrl?: string }> {
-    if (this.appInfo) {
+    if (this.appInfo !== null) {
       return this.appInfo;
     }
     
@@ -21,13 +24,23 @@ export class ContinuityFileManager {
       if (!response.ok) {
         throw new Error('Failed to load app_info.json');
       }
-      this.appInfo = await response.json();
-      return this.appInfo;
+      const data = await response.json();
+      this.appInfo = data || { version: '26.0.0' };
+      return this.appInfo as { version: string; copyright?: string; license?: string; bugReportUrl?: string };
     } catch (error) {
       console.error('Error loading app info:', error);
-      // Return a default version if app_info.json is not available
-      return { version: '26.1.2' };
+      // Return a minimal version object if app_info.json is not available
+      this.appInfo = { version: '26.0.0' };
+      return this.appInfo;
     }
+  }
+
+  /**
+   * Get current app version (loads from appInfo cache or fetches if needed)
+   */
+  static async getCurrentVersion(): Promise<string> {
+    const appInfo = await this.loadAppInfo();
+    return appInfo.version;
   }
 
   /**
@@ -92,7 +105,7 @@ export class ContinuityFileManager {
           
           // Check version and generate warning if needed
           const appInfo = await this.loadAppInfo();
-          const fileVersion = project.appVersion || '26.1.1'; // Treat unmarked files as v26.1.1
+          const fileVersion = project.appVersion || DEFAULT_OLD_VERSION; // Treat unmarked files as v26.1.1
           const currentVersion = appInfo.version;
           
           let versionWarning: string | undefined;

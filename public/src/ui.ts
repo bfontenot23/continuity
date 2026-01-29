@@ -35,12 +35,87 @@ export class UIComponents {
             </div>
           ` : ''}
         </div>
+        <button id="hamburger-menu-btn" class="hamburger-menu-btn" title="Menu" aria-haspopup="true" aria-expanded="false" aria-label="Toggle menu">
+          <span class="hamburger-icon"></span>
+          <span class="hamburger-icon"></span>
+          <span class="hamburger-icon"></span>
+        </button>
+        <div class="hamburger-menu" id="hamburger-menu" role="menu">
+          <button id="hamburger-info-btn" class="hamburger-menu-item" role="menuitem">App Info</button>
+          <button id="hamburger-new-project-btn" class="hamburger-menu-item" role="menuitem">New Project</button>
+          ${project ? `
+            <button id="hamburger-import-btn" class="hamburger-menu-item" role="menuitem">Import</button>
+            <button id="hamburger-export-png-btn" class="hamburger-menu-item" role="menuitem">Export as PNG</button>
+            <button id="hamburger-export-cty-btn" class="hamburger-menu-item" role="menuitem">Export as .cty</button>
+          ` : ''}
+        </div>
       </div>
     `;
 
-    // Wire up info button
+    // Wire up info button (large screens)
     if (onShowAppInfo) {
       header.querySelector('#info-btn')?.addEventListener('click', onShowAppInfo);
+    }
+
+    // Hamburger menu setup (before other buttons so closeHamburgerMenu is available)
+    const hamburgerMenuBtn = header.querySelector('#hamburger-menu-btn') as HTMLButtonElement | null;
+    const hamburgerMenu = header.querySelector('#hamburger-menu') as HTMLElement | null;
+
+    let hamburgerDocClickHandler: ((e: MouseEvent) => void) | null = null;
+    let hamburgerKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
+
+    const closeHamburgerMenu = () => {
+      if (!hamburgerMenu || !hamburgerMenuBtn) return;
+      hamburgerMenu.classList.remove('open');
+      hamburgerMenuBtn.setAttribute('aria-expanded', 'false');
+      if (hamburgerDocClickHandler) {
+        document.removeEventListener('click', hamburgerDocClickHandler);
+        hamburgerDocClickHandler = null;
+      }
+      if (hamburgerKeydownHandler) {
+        document.removeEventListener('keydown', hamburgerKeydownHandler);
+        hamburgerKeydownHandler = null;
+      }
+    };
+
+    const openHamburgerMenu = () => {
+      if (!hamburgerMenu || !hamburgerMenuBtn) return;
+      hamburgerMenu.classList.add('open');
+      hamburgerMenuBtn.setAttribute('aria-expanded', 'true');
+      hamburgerDocClickHandler = (e: MouseEvent) => {
+        if (hamburgerMenu && !hamburgerMenu.contains(e.target as Node) && e.target !== hamburgerMenuBtn) {
+          closeHamburgerMenu();
+        }
+      };
+      hamburgerKeydownHandler = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          closeHamburgerMenu();
+        }
+      };
+      document.addEventListener('click', hamburgerDocClickHandler);
+      document.addEventListener('keydown', hamburgerKeydownHandler);
+    };
+
+    const toggleHamburgerMenu = () => {
+      if (!hamburgerMenu) return;
+      if (hamburgerMenu.classList.contains('open')) {
+        closeHamburgerMenu();
+      } else {
+        openHamburgerMenu();
+      }
+    };
+
+    hamburgerMenuBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleHamburgerMenu();
+    });
+
+    // Wire up hamburger info button
+    if (onShowAppInfo) {
+      header.querySelector('#hamburger-info-btn')?.addEventListener('click', () => {
+        closeHamburgerMenu();
+        onShowAppInfo();
+      });
     }
 
     header.querySelector('#new-project-btn')?.addEventListener('click', onNewProject);
@@ -123,6 +198,48 @@ export class UIComponents {
           }
         };
         input.click();
+      });
+    }
+
+    // Wire hamburger menu items
+    const hamburgerNewProjectBtn = header.querySelector('#hamburger-new-project-btn') as HTMLButtonElement | null;
+    if (hamburgerNewProjectBtn) {
+      hamburgerNewProjectBtn.addEventListener('click', () => {
+        closeHamburgerMenu();
+        onNewProject();
+      });
+    }
+
+    const hamburgerImportBtn = header.querySelector('#hamburger-import-btn') as HTMLButtonElement | null;
+    if (hamburgerImportBtn) {
+      hamburgerImportBtn.addEventListener('click', () => {
+        closeHamburgerMenu();
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.cty,.json';
+        input.onchange = async (e) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (file) {
+            onImport(file);
+          }
+        };
+        input.click();
+      });
+    }
+
+    const hamburgerExportPngBtn = header.querySelector('#hamburger-export-png-btn') as HTMLButtonElement | null;
+    if (hamburgerExportPngBtn) {
+      hamburgerExportPngBtn.addEventListener('click', () => {
+        closeHamburgerMenu();
+        onExportPNG();
+      });
+    }
+
+    const hamburgerExportCtyBtn = header.querySelector('#hamburger-export-cty-btn') as HTMLButtonElement | null;
+    if (hamburgerExportCtyBtn) {
+      hamburgerExportCtyBtn.addEventListener('click', () => {
+        closeHamburgerMenu();
+        onExport();
       });
     }
 
@@ -903,22 +1020,99 @@ export class UIComponents {
         border-color: rgba(255, 255, 255, 0.22);
       }
 
+      .hamburger-menu-btn {
+        display: none;
+        flex-direction: column;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0.5rem;
+        gap: 0.35rem;
+        margin-left: auto;
+        position: relative;
+        z-index: 11;
+      }
+
+      .hamburger-icon {
+        width: 24px;
+        height: 2px;
+        background: #e2e8f0;
+        border-radius: 2px;
+        transition: all 0.3s ease;
+        display: block;
+      }
+
+      .hamburger-menu-btn[aria-expanded="true"] .hamburger-icon:nth-child(1) {
+        transform: rotate(45deg) translateY(10px);
+      }
+
+      .hamburger-menu-btn[aria-expanded="true"] .hamburger-icon:nth-child(2) {
+        opacity: 0;
+      }
+
+      .hamburger-menu-btn[aria-expanded="true"] .hamburger-icon:nth-child(3) {
+        transform: rotate(-45deg) translateY(-10px);
+      }
+
+      .hamburger-menu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 1rem;
+        background: #0b1220;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        min-width: 200px;
+        padding: 0.25rem;
+        z-index: 10;
+      }
+
+      .hamburger-menu.open {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .hamburger-menu-item {
+        width: 100%;
+        text-align: left;
+        padding: 0.75rem 1rem;
+        background: transparent;
+        border: none;
+        color: #e2e8f0;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 0.95rem;
+        transition: background 0.2s ease;
+      }
+
+      .hamburger-menu-item:hover {
+        background: rgba(255, 255, 255, 0.08);
+      }
+
       @media (max-width: 720px) {
+        .hamburger-menu-btn {
+          display: flex;
+        }
+
+        #info-btn {
+          display: none !important;
+        }
+
         .topbar-inner {
-          align-items: flex-start;
+          align-items: center;
+          position: relative;
+          flex-wrap: nowrap;
+          gap: 0.5rem;
         }
 
         .brand {
-          width: 100%;
-          justify-content: space-between;
-        }
-
-        .brand-copy {
-          flex: 1;
-          min-width: 0;
+          flex-shrink: 0;
         }
 
         .topbar-actions {
+          display: none;
           width: 100%;
           margin-left: 0;
           justify-content: flex-start;
@@ -1462,6 +1656,83 @@ export class UIComponents {
         .nav-add-btn {
           order: 3;
           align-self: flex-start;
+        }
+      }
+
+      @media (max-width: 720px) {
+        #app {
+          display: flex;
+          flex-direction: column;
+          height: 100vh;
+        }
+
+        #app.app-has-sidebar {
+          padding-bottom: 25vh;
+        }
+
+        .main-wrapper {
+          flex: 1;
+          overflow: hidden;
+          padding-bottom: 0;
+        }
+
+        .edit-sidebar {
+          position: fixed;
+          right: 0;
+          bottom: 0;
+          left: 0;
+          top: auto;
+          width: 100%;
+          height: 25vh;
+          min-height: 250px;
+          border-top: 2px solid #e0e0e0;
+          border-radius: 12px 12px 0 0;
+          box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
+          z-index: 999;
+        }
+
+        .edit-sidebar-content {
+          flex: 1;
+          padding: 1rem;
+          overflow-y: auto;
+          overflow-x: hidden;
+        }
+
+        .edit-sidebar-header {
+          padding: 1rem;
+        }
+
+        .edit-sidebar-header h3 {
+          font-size: 1rem;
+        }
+
+        .edit-sidebar-actions {
+          padding: 1rem;
+          gap: 0.5rem;
+        }
+
+        .edit-sidebar-actions button {
+          padding: 0.4rem 0.8rem;
+          font-size: 0.85rem;
+        }
+
+        .edit-sidebar .form-group {
+          margin-bottom: 0.75rem;
+        }
+
+        .edit-sidebar label {
+          font-size: 0.85rem;
+        }
+
+        .edit-sidebar input,
+        .edit-sidebar textarea,
+        .edit-sidebar select {
+          font-size: 0.85rem;
+          padding: 0.4rem;
+        }
+
+        .edit-sidebar textarea {
+          min-height: 60px;
         }
       }
 

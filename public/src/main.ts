@@ -33,6 +33,7 @@ function initializeApp() {
       currentEditSidebar = null;
     }
     preservedSidebarState = null;
+    app?.classList.remove('app-has-sidebar');
   }
 
   function showTimelineEditSidebar(timelineId: string, autoFocus: boolean = false) {
@@ -55,6 +56,7 @@ function initializeApp() {
     );
     
     appElement.appendChild(currentEditSidebar);
+    appElement.classList.add('app-has-sidebar');
     preservedSidebarState = { type: 'timeline', id: timelineId };
   }
 
@@ -90,6 +92,7 @@ function initializeApp() {
     );
     
     appElement.appendChild(currentEditSidebar);
+    appElement.classList.add('app-has-sidebar');
     preservedSidebarState = { type: 'chapter', id: chapterId };
   }
 
@@ -130,6 +133,7 @@ function initializeApp() {
     );
     
     appElement.appendChild(currentEditSidebar);
+    appElement.classList.add('app-has-sidebar');
     preservedSidebarState = { type: 'branch', id: branchId };
   }
 
@@ -153,6 +157,7 @@ function initializeApp() {
     );
     
     appElement.appendChild(currentEditSidebar);
+    appElement.classList.add('app-has-sidebar');
     preservedSidebarState = { type: 'textbox', id: textboxId };
   }
 
@@ -539,6 +544,7 @@ function initializeApp() {
     );
     
     appElement.appendChild(currentEditSidebar);
+    appElement.classList.add('app-has-sidebar');
     preservedSidebarState = { type: 'line', id: lineId };
   }
 
