@@ -187,44 +187,20 @@ export class AppStateManager {
 
   /**
    * Update branch chapter references when a chapter is deleted.
-   * Finds the new adjacent chapter at the same position and updates the branch to reference it.
+   * - For start points: Link to the chapter immediately BEFORE the deleted chapter
+   * - For end points: Link to the chapter immediately AFTER the deleted chapter
    */
   private updateBranchReferencesAfterChapterDeletion(continuity: Continuity, deletedChapterId: string): void {
     if (!this.state.currentProject) return;
 
-    // Helper to find chapter at a specific position after deletion
-    const findChapterAtPositionAfterDeletion = (gridPosition: number): string | undefined => {
-      const sortedChapters = [...continuity.chapters]
-        .filter(ch => ch.id !== deletedChapterId) // Exclude the one being deleted
-        .sort((a, b) => a.timestamp - b.timestamp);
-      
-      let currentX = 1; // Start after Head
+    // Find the deleted chapter's position in the sequence
+    const sortedChapters = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
+    const deletedIndex = sortedChapters.findIndex(ch => ch.id === deletedChapterId);
+    if (deletedIndex === -1) return;
 
-      for (const chapter of sortedChapters) {
-        let chapterWidth: number;
-        if (chapter.gridLength && chapter.gridLength > 0) {
-          chapterWidth = chapter.gridLength;
-        } else {
-          chapterWidth = Math.max(1, Math.ceil(chapter.title.length / 5));
-        }
-
-        const chapterEndPos = currentX + chapterWidth;
-        
-        // Check if position matches this chapter's end (for start points)
-        if (Math.abs(gridPosition - chapterEndPos) < 0.01) {
-          return chapter.id;
-        }
-        
-        // Check if position matches this chapter's start (for end points)
-        if (Math.abs(gridPosition - currentX) < 0.01) {
-          return chapter.id;
-        }
-
-        currentX += chapterWidth;
-      }
-
-      return undefined;
-    };
+    // Get adjacent chapters
+    const chapterBefore = deletedIndex > 0 ? sortedChapters[deletedIndex - 1] : undefined;
+    const chapterAfter = deletedIndex < sortedChapters.length - 1 ? sortedChapters[deletedIndex + 1] : undefined;
 
     // Update all branches in all continuities that reference the deleted chapter
     this.state.currentProject.continuities.forEach(cont => {
@@ -232,15 +208,15 @@ export class AppStateManager {
       
       cont.branches.forEach(branch => {
         // Update start chapter reference if it matches deleted chapter
+        // Start point should link to chapter BEFORE deleted chapter
         if (branch.startContinuityId === continuity.id && branch.startChapterId === deletedChapterId) {
-          const newChapterId = findChapterAtPositionAfterDeletion(branch.startPosition);
-          branch.startChapterId = newChapterId; // Will be undefined if no chapter at that position
+          branch.startChapterId = chapterBefore?.id; // Will be undefined if no chapter before
         }
         
         // Update end chapter reference if it matches deleted chapter
+        // End point should link to chapter AFTER deleted chapter
         if (branch.endContinuityId === continuity.id && branch.endChapterId === deletedChapterId) {
-          const newChapterId = findChapterAtPositionAfterDeletion(branch.endPosition);
-          branch.endChapterId = newChapterId; // Will be undefined if no chapter at that position
+          branch.endChapterId = chapterAfter?.id; // Will be undefined if no chapter after
         }
       });
     });
