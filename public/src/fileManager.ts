@@ -62,6 +62,39 @@ export class ContinuityFileManager {
   }
 
   /**
+   * Load changelog markdown for a specific version
+   * Falls back to changelog_fallback if version-specific file doesn't exist
+   */
+  static async loadChangelog(): Promise<string> {
+    const appInfo = await this.loadAppInfo();
+    const version = appInfo.version;
+    
+    // Convert version to filename format (e.g., "26.1.2" -> "changelog_26_1_2")
+    const changelogFilename = `changelog_${version.replace(/\./g, '_')}.md`;
+    
+    try {
+      const response = await fetch(`/assets/changelogs/${changelogFilename}`);
+      if (response.ok) {
+        return await response.text();
+      }
+    } catch (error) {
+      console.warn(`Failed to load changelog for version ${version}:`, error);
+    }
+    
+    // Fallback to changelog_fallback
+    try {
+      const response = await fetch('/assets/changelogs/changelog_fallback');
+      if (response.ok) {
+        return await response.text();
+      }
+    } catch (error) {
+      console.error('Failed to load changelog fallback:', error);
+    }
+    
+    return 'Unable to load changelog.';
+  }
+
+  /**
    * Export a project to a .cty file
    */
   static async exportProject(project: Project, filename?: string): Promise<void> {

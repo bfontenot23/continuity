@@ -6,7 +6,7 @@ import { Project, Continuity, createArc, createChapter, Arc } from './types';
 import { AppStateManager } from './state';
 
 export class UIComponents {
-  static createHeader(project: Project | null, onNewProject: () => void, onExport: () => void, onImport: (file: File) => void, onExportPNG: () => void = () => {}, onShowAppInfo: (() => void) | null = null): HTMLElement {
+  static createHeader(project: Project | null, onNewProject: () => void, onExport: () => void, onImport: (file: File) => void, onExportPNG: () => void = () => {}, onShowAppInfo: (() => void) | null = null, onShowChangelog: (() => void) | null = null): HTMLElement {
     const header = document.createElement('header');
     header.className = 'topbar';
     header.innerHTML = `
@@ -18,6 +18,9 @@ export class UIComponents {
           </div>
           <button id="info-btn" class="icon-btn" title="App information" style="width: 32px; height: 32px; padding: 4px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; margin-left: 0.5rem;">
             <img src="/assets/icons/info-circle.svg" alt="Info" style="width: 20px; height: 20px;">
+          </button>
+          <button id="changelog-btn" class="icon-btn" title="View changelog" style="width: 32px; height: 32px; padding: 4px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer;">
+            <img src="/assets/icons/changelog.svg" alt="Changelog" style="width: 20px; height: 20px;">
           </button>
         </div>
         <div class="topbar-actions" role="group" aria-label="Project actions">
@@ -42,6 +45,7 @@ export class UIComponents {
         </button>
         <div class="hamburger-menu" id="hamburger-menu" role="menu">
           <button id="hamburger-info-btn" class="hamburger-menu-item" role="menuitem">App Info</button>
+          <button id="hamburger-changelog-btn" class="hamburger-menu-item" role="menuitem">Changelog</button>
           <button id="hamburger-new-project-btn" class="hamburger-menu-item" role="menuitem">New Project</button>
           ${project ? `
             <button id="hamburger-import-btn" class="hamburger-menu-item" role="menuitem">Import</button>
@@ -55,6 +59,11 @@ export class UIComponents {
     // Wire up info button (large screens)
     if (onShowAppInfo) {
       header.querySelector('#info-btn')?.addEventListener('click', onShowAppInfo);
+    }
+
+    // Wire up changelog button (large screens)
+    if (onShowChangelog) {
+      header.querySelector('#changelog-btn')?.addEventListener('click', onShowChangelog);
     }
 
     // Hamburger menu setup (before other buttons so closeHamburgerMenu is available)
@@ -115,6 +124,14 @@ export class UIComponents {
       header.querySelector('#hamburger-info-btn')?.addEventListener('click', () => {
         closeHamburgerMenu();
         onShowAppInfo();
+      });
+    }
+
+    // Wire up hamburger changelog button
+    if (onShowChangelog) {
+      header.querySelector('#hamburger-changelog-btn')?.addEventListener('click', () => {
+        closeHamburgerMenu();
+        onShowChangelog();
       });
     }
 
@@ -658,6 +675,93 @@ export class UIComponents {
     return modal;
   }
 
+  /**
+   * Convert simple markdown to HTML for changelog display
+   */
+  private static markdownToHtml(markdown: string): string {
+    // Remove escaped characters (backslash before special chars)
+    let html = markdown.replace(/\\([+\-*#\[\]()])/g, '$1');
+
+    // Escape HTML
+    html = html
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Convert markdown links [text](url) to HTML links
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: none; font-weight: 500;">$1</a>');
+
+    // Convert # headings to HTML (do this before bold/text processing)
+    html = html.replace(/^### (.*?)$/gm, '<h4 style="font-size: 1rem; font-weight: 700; margin: 0.5rem 0 0.1rem 0;">$1</h4>');
+    html = html.replace(/^## (.*?)$/gm, '<h3 style="font-size: 1.1rem; font-weight: 700; margin: 0.5rem 0 -0.4rem 0;">$1</h3>');
+    html = html.replace(/^# (.*?)$/gm, '<h2 style="font-size: 1.5rem; font-weight: 700; margin: 0 0 0.1rem 0;">$1</h2>');
+
+    // Convert bold **text**
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 700;">$1</strong>');
+
+    // Convert line breaks
+    html = html.replace(/\n\n/g, '</p><p style="margin: 0.5rem 0 0;">');
+    html = html.replace(/\n/g, '<br>');
+
+    // Convert bullet points
+    html = html.replace(/^[\+\-\*] (.*?)(?=<br>|<\/p>)/gm, '<li style="margin-left: 1.5rem; margin-bottom: 0.25rem;">$1</li>');
+    html = html.replace(/(<li[^>]*>.*?<\/li>)/s, '<ul style="list-style: disc; margin: 0.5rem 0; padding-left: 0;">$1</ul>');
+
+    // Wrap in paragraphs with negative top margin to counteract heading spacing
+    html = `<p style="margin: -0.3rem 0 0 0; padding: 0;">${html}</p>`;
+
+    return html;
+  }
+
+  static createChangelogModal(changelogContent: string): HTMLElement {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+
+    const htmlContent = this.markdownToHtml(changelogContent);
+
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 600px; max-height: 80vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <h2 style="margin: 0;">Changelog</h2>
+        </div>
+        <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 1rem;">
+          <div style="font-size: 0.95rem; line-height: 1.6; color: #333;">
+            ${htmlContent}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="modal-close" class="btn btn-primary">Close</button>
+        </div>
+      </div>
+    `;
+
+    const closeBtn = modal.querySelector('#modal-close') as HTMLButtonElement;
+
+    const closeModal = () => {
+      modal.remove();
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+
+    // Close on escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+
+    // Close on overlay click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal();
+      }
+    });
+
+    return modal;
+  }
+
   static createProjectModal(onSubmit: (projectName: string) => void): HTMLElement {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
@@ -1113,6 +1217,10 @@ export class UIComponents {
         }
 
         #info-btn {
+          display: none !important;
+        }
+
+        #changelog-btn {
           display: none !important;
         }
 

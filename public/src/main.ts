@@ -198,6 +198,15 @@ function initializeApp() {
       }
     }
 
+    async function handleShowChangelog() {
+      const changelogContent = await ContinuityFileManager.loadChangelog();
+      const appElement = document.getElementById('app');
+      if (appElement) {
+        const modal = UIComponents.createChangelogModal(changelogContent);
+        appElement.appendChild(modal);
+      }
+    }
+
     mainWrapper.appendChild(
       UIComponents.createHeader(
         currentProject,
@@ -205,7 +214,8 @@ function initializeApp() {
         handleExport,
         handleImport,
         handleExportPNG,
-        handleShowAppInfo
+        handleShowAppInfo,
+        handleShowChangelog
       )
     );
 
