@@ -2222,6 +2222,49 @@ export class UIComponents {
         const arcsList = document.createElement('div');
         arcsList.className = 'arcs-list';
         arcsList.id = 'arcs-list';
+        arcsList.style.minHeight = '50px'; // Ensure there's space to drop even when empty
+
+        let draggedElement: HTMLElement | null = null;
+        let placeholder: HTMLElement | null = null;
+
+        // Handle dragging over the list container for top/bottom edge cases
+        arcsList.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          if (draggedElement && placeholder && arcsList.children.length > 1) {
+            const items = Array.from(arcsList.children).filter(child => 
+              child.classList.contains('arc-item') && 
+              child !== draggedElement
+            ) as HTMLElement[];
+            
+            if (items.length > 0) {
+              const mouseY = e.clientY;
+              
+              // Check if near the top of the list
+              const firstItem = items[0];
+              const firstItemRect = firstItem.getBoundingClientRect();
+              
+              if (mouseY < firstItemRect.top) {
+                // Move placeholder to the very top
+                if (arcsList.firstChild !== placeholder) {
+                  arcsList.insertBefore(placeholder, arcsList.firstChild);
+                }
+                return;
+              }
+              
+              // Check if near the bottom of the list
+              const lastItem = items[items.length - 1];
+              const lastItemRect = lastItem.getBoundingClientRect();
+              
+              if (mouseY > lastItemRect.bottom) {
+                // Move placeholder to the very bottom
+                if (arcsList.lastChild !== placeholder) {
+                  arcsList.appendChild(placeholder);
+                }
+                return;
+              }
+            }
+          }
+        });
 
         const renderArcsList = () => {
           arcsList.innerHTML = '';
@@ -2233,9 +2276,15 @@ export class UIComponents {
             arcsList.appendChild(emptyMsg);
             emptyMsg.textContent = 'No arcs yet. Add one below.';
           } else {
-            continuity.arcs.forEach(arc => {
+            // Sort arcs by order property for consistent display
+            const sortedArcs = [...continuity.arcs].sort((a, b) => a.order - b.order);
+            
+            sortedArcs.forEach((arc, index) => {
               const arcItem = document.createElement('div');
               arcItem.className = 'arc-item';
+              arcItem.draggable = true;
+              arcItem.dataset.arcId = arc.id;
+              arcItem.dataset.arcIndex = String(index);
               arcItem.style.display = 'flex';
               arcItem.style.alignItems = 'center';
               arcItem.style.gap = '8px';
@@ -2243,6 +2292,9 @@ export class UIComponents {
               arcItem.style.padding = '8px';
               arcItem.style.borderRadius = '4px';
               arcItem.style.backgroundColor = '#f5f5f5';
+              arcItem.style.cursor = 'grab';
+              arcItem.style.transition = 'opacity 0.2s ease';
+              arcItem.style.userSelect = 'none';
 
               const colorPreview = document.createElement('div');
               colorPreview.style.width = '24px';
@@ -2250,10 +2302,12 @@ export class UIComponents {
               colorPreview.style.borderRadius = '4px';
               colorPreview.style.backgroundColor = arc.color;
               colorPreview.style.border = '1px solid #ccc';
+              colorPreview.style.pointerEvents = 'none';
               arcItem.appendChild(colorPreview);
 
               const arcName = document.createElement('span');
               arcName.style.flex = '1';
+              arcName.style.pointerEvents = 'none';
               arcName.textContent = arc.name;
               arcItem.appendChild(arcName);
 
@@ -2289,6 +2343,114 @@ export class UIComponents {
                 document.body.appendChild(confirmModal);
               });
               arcItem.appendChild(deleteBtn);
+
+              // Drag and drop event handlers
+              arcItem.addEventListener('dragstart', (e) => {
+                draggedElement = arcItem;
+                
+                // Create placeholder
+                placeholder = document.createElement('div');
+                placeholder.className = 'arc-item-placeholder';
+                placeholder.style.height = arcItem.offsetHeight + 'px';
+                placeholder.style.marginBottom = '8px';
+                placeholder.style.border = '2px dashed #667eea';
+                placeholder.style.borderRadius = '4px';
+                placeholder.style.backgroundColor = 'rgba(102, 126, 234, 0.1)';
+                
+                // Insert placeholder at original position and hide the dragged element
+                setTimeout(() => {
+                  if (draggedElement && placeholder) {
+                    draggedElement.parentNode?.insertBefore(placeholder, draggedElement);
+                    draggedElement.style.display = 'none';
+                  }
+                }, 0);
+                
+                e.dataTransfer!.effectAllowed = 'move';
+                e.dataTransfer!.setData('text/plain', String(index));
+              });
+
+              arcItem.addEventListener('dragend', () => {
+                if (draggedElement && placeholder) {
+                  // Calculate final position from placeholder location immediately
+                  const allChildren = Array.from(arcsList.children);
+                  const placeholderIndex = allChildren.indexOf(placeholder);
+                  
+                  // Count only actual arc items before the placeholder
+                  let toIndex = 0;
+                  for (let i = 0; i < placeholderIndex; i++) {
+                    if (allChildren[i].classList.contains('arc-item')) {
+                      toIndex++;
+                    }
+                  }
+                  
+                  const fromIndex = parseInt(draggedElement.dataset.arcIndex || '0');
+                  
+                  // Remove placeholder immediately
+                  placeholder.parentNode?.removeChild(placeholder);
+                  placeholder = null;
+                  
+                  // Show the element again
+                  draggedElement.style.display = 'flex';
+                  draggedElement.style.opacity = '1';
+                  draggedElement.style.cursor = 'grab';
+                  
+                  draggedElement = null;
+                  
+                  // Perform state update if position changed
+                  if (fromIndex !== toIndex) {
+                    stateManager.reorderArcs(continuity.id, fromIndex, toIndex);
+                  } else {
+                    // Even if no change, we need to re-render to clean up
+                    renderArcsList();
+                  }
+                }
+              });
+
+              arcItem.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer!.dropEffect = 'move';
+                
+                if (draggedElement && placeholder && draggedElement !== arcItem) {
+                  // Get all visible arc items (excluding the hidden dragged element and placeholder)
+                  const items = Array.from(arcsList.children).filter(child => 
+                    child.classList.contains('arc-item') && 
+                    child !== draggedElement &&
+                    !child.classList.contains('arc-item-placeholder')
+                  ) as HTMLElement[];
+                  
+                  const targetIndex = items.indexOf(arcItem);
+                  
+                  if (targetIndex !== -1) {
+                    // Determine if we're hovering over the top or bottom half of the target
+                    const rect = arcItem.getBoundingClientRect();
+                    const mouseY = e.clientY;
+                    const itemMiddle = rect.top + rect.height / 2;
+                    
+                    // Get the current position of the placeholder in all children
+                    const allChildren = Array.from(arcsList.children);
+                    const placeholderCurrentIndex = allChildren.indexOf(placeholder);
+                    const targetActualIndex = allChildren.indexOf(arcItem);
+                    
+                    if (mouseY < itemMiddle) {
+                      // Insert before this item
+                      if (placeholderCurrentIndex !== targetActualIndex) {
+                        arcItem.parentNode?.insertBefore(placeholder, arcItem);
+                      }
+                    } else {
+                      // Insert after this item
+                      const nextSiblingIndex = targetActualIndex + 1;
+                      if (placeholderCurrentIndex !== nextSiblingIndex) {
+                        arcItem.parentNode?.insertBefore(placeholder, arcItem.nextSibling);
+                      }
+                    }
+                  }
+                }
+              });
+
+              arcItem.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              });
 
               arcsList.appendChild(arcItem);
             });

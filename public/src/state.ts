@@ -401,6 +401,28 @@ export class AppStateManager {
     }
   }
 
+  reorderArcs(continuityId: string, fromIndex: number, toIndex: number): void {
+    if (this.state.currentProject) {
+      const continuity = this.state.currentProject.continuities.find(c => c.id === continuityId);
+      if (continuity && fromIndex !== toIndex) {
+        // Sort arcs by current order
+        const sortedArcs = [...continuity.arcs].sort((a, b) => a.order - b.order);
+        
+        // Move the arc from fromIndex to toIndex
+        const [movedArc] = sortedArcs.splice(fromIndex, 1);
+        sortedArcs.splice(toIndex, 0, movedArc);
+        
+        // Reassign order values
+        sortedArcs.forEach((arc, index) => {
+          arc.order = index;
+        });
+        
+        this.state.currentProject.modified = Date.now();
+        this.notifyListeners();
+      }
+    }
+  }
+
   reorderArc(continuityId: string, arcId: string, targetIndex: number): void {
     if (this.state.currentProject) {
       const continuity = this.state.currentProject.continuities.find(c => c.id === continuityId);
