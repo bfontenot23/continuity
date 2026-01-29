@@ -116,6 +116,10 @@ export class AppStateManager {
         const maxTimestamp = continuity.chapters.reduce((max, ch) => Math.max(max, ch.timestamp), 0);
         chapter.timestamp = maxTimestamp + 1;
         continuity.chapters.push(chapter);
+        
+        // Recalculate branch positions since chapter layout changed
+        this.recalculateBranchPositions(continuity);
+        
         this.state.currentProject.modified = Date.now();
         this.notifyListeners();
       }
@@ -153,6 +157,9 @@ export class AppStateManager {
           continuity.chapters.push(chapter);
         }
         
+        // Recalculate branch positions since chapter layout changed
+        this.recalculateBranchPositions(continuity);
+        
         this.state.currentProject.modified = Date.now();
         this.notifyListeners();
       }
@@ -166,8 +173,9 @@ export class AppStateManager {
         const chapter = continuity.chapters.find(ch => ch.id === chapterId);
         if (chapter) {
           Object.assign(chapter, updates);
-          // If gridLength changed, recalculate branch positions on this timeline
-          if ('gridLength' in updates && continuity.branches) {
+          // If gridLength or timestamp changed, recalculate branch positions on this timeline
+          // timestamp changes mean chapter reordering, which affects branch positions
+          if (('gridLength' in updates || 'timestamp' in updates) && continuity.branches) {
             this.recalculateBranchPositions(continuity);
           }
           this.state.currentProject.modified = Date.now();
@@ -178,12 +186,73 @@ export class AppStateManager {
   }
 
   /**
+   * Update branch chapter references when a chapter is deleted.
+   * Finds the new adjacent chapter at the same position and updates the branch to reference it.
+   */
+  private updateBranchReferencesAfterChapterDeletion(continuity: Continuity, deletedChapterId: string): void {
+    if (!this.state.currentProject) return;
+
+    // Helper to find chapter at a specific position after deletion
+    const findChapterAtPositionAfterDeletion = (gridPosition: number): string | undefined => {
+      const sortedChapters = [...continuity.chapters]
+        .filter(ch => ch.id !== deletedChapterId) // Exclude the one being deleted
+        .sort((a, b) => a.timestamp - b.timestamp);
+      
+      let currentX = 1; // Start after Head
+
+      for (const chapter of sortedChapters) {
+        let chapterWidth: number;
+        if (chapter.gridLength && chapter.gridLength > 0) {
+          chapterWidth = chapter.gridLength;
+        } else {
+          chapterWidth = Math.max(1, Math.ceil(chapter.title.length / 5));
+        }
+
+        const chapterEndPos = currentX + chapterWidth;
+        
+        // Check if position matches this chapter's end (for start points)
+        if (Math.abs(gridPosition - chapterEndPos) < 0.01) {
+          return chapter.id;
+        }
+        
+        // Check if position matches this chapter's start (for end points)
+        if (Math.abs(gridPosition - currentX) < 0.01) {
+          return chapter.id;
+        }
+
+        currentX += chapterWidth;
+      }
+
+      return undefined;
+    };
+
+    // Update all branches in all continuities that reference the deleted chapter
+    this.state.currentProject.continuities.forEach(cont => {
+      if (!cont.branches) return;
+      
+      cont.branches.forEach(branch => {
+        // Update start chapter reference if it matches deleted chapter
+        if (branch.startContinuityId === continuity.id && branch.startChapterId === deletedChapterId) {
+          const newChapterId = findChapterAtPositionAfterDeletion(branch.startPosition);
+          branch.startChapterId = newChapterId; // Will be undefined if no chapter at that position
+        }
+        
+        // Update end chapter reference if it matches deleted chapter
+        if (branch.endContinuityId === continuity.id && branch.endChapterId === deletedChapterId) {
+          const newChapterId = findChapterAtPositionAfterDeletion(branch.endPosition);
+          branch.endChapterId = newChapterId; // Will be undefined if no chapter at that position
+        }
+      });
+    });
+  }
+
+  /**
    * Recalculate branch positions when chapter widths change.
    * Branches store chapter IDs to maintain their associations even when
    * the timeline layout changes due to chapter gridLength modifications.
    */
   private recalculateBranchPositions(continuity: Continuity): void {
-    if (!continuity.branches || continuity.branches.length === 0) return;
+    if (!this.state.currentProject) return;
 
     // Helper to calculate chapter positions
     const getChapterPositions = (chapters: Chapter[]) => {
@@ -206,33 +275,32 @@ export class AppStateManager {
       return { positions, tailPosition: currentX };
     };
 
-    // Update branches that reference this continuity
-    continuity.branches.forEach(branch => {
-      // Recalculate start position if branch starts on this continuity
-      if (branch.startContinuityId === continuity.id) {
-        if (branch.startChapterId) {
-          // Branch is anchored to a specific chapter - update position
-          const { positions } = getChapterPositions(continuity.chapters);
+    // Get positions for this continuity
+    const { positions } = getChapterPositions(continuity.chapters);
+
+    // Update ALL branches in ALL continuities that reference this continuity
+    this.state.currentProject.continuities.forEach(cont => {
+      if (!cont.branches) return;
+      
+      cont.branches.forEach(branch => {
+        // Recalculate start position if branch starts on this continuity
+        if (branch.startContinuityId === continuity.id && branch.startChapterId) {
+          // Branch is anchored to left chapter - update to chapter's END position
           const chapterPos = positions.get(branch.startChapterId);
           if (chapterPos) {
             branch.startPosition = chapterPos.x + chapterPos.width;
           }
         }
-        // If no chapter ID, position stays as-is (was at tail or intermediate point)
-      }
-      
-      // Recalculate end position if branch ends on this continuity
-      if (branch.endContinuityId === continuity.id) {
-        if (branch.endChapterId) {
-          // Branch is anchored to a specific chapter - update position
-          const { positions } = getChapterPositions(continuity.chapters);
+        
+        // Recalculate end position if branch ends on this continuity
+        if (branch.endContinuityId === continuity.id && branch.endChapterId) {
+          // Branch is anchored to right chapter - update to chapter's START position
           const chapterPos = positions.get(branch.endChapterId);
           if (chapterPos) {
-            branch.endPosition = chapterPos.x + chapterPos.width;
+            branch.endPosition = chapterPos.x;
           }
         }
-        // If no chapter ID, position stays as-is (was at tail or intermediate point)
-      }
+      });
     });
   }
 
@@ -240,10 +308,17 @@ export class AppStateManager {
     if (this.state.currentProject) {
       const continuity = this.state.currentProject.continuities.find(c => c.id === continuityId);
       if (continuity) {
+        // Before removing, update any branches that reference this chapter
+        this.updateBranchReferencesAfterChapterDeletion(continuity, chapterId);
+        
         continuity.chapters = continuity.chapters.filter(ch => ch.id !== chapterId);
         if (this.state.selectedChapterId === chapterId) {
           this.state.selectedChapterId = null;
         }
+        
+        // Recalculate branch positions since chapter layout changed
+        this.recalculateBranchPositions(continuity);
+        
         this.state.currentProject.modified = Date.now();
         this.notifyListeners();
       }
@@ -291,6 +366,9 @@ export class AppStateManager {
         sortedChapters.forEach((ch, index) => {
           ch.timestamp = index + 1;
         });
+
+        // Recalculate branch positions since chapter layout changed
+        this.recalculateBranchPositions(continuity);
 
         this.state.currentProject.modified = Date.now();
         this.notifyListeners();

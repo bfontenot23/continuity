@@ -125,6 +125,8 @@ function initializeApp() {
         lineStyle: foundBranch.lineStyle,
         startEndpointStyle: foundBranch.startEndpointStyle,
         endEndpointStyle: foundBranch.endEndpointStyle,
+        startChapterId: foundBranch.startChapterId,
+        endChapterId: foundBranch.endChapterId,
       },
       null, // Don't need continuity context for branches
       stateManager,
@@ -456,9 +458,11 @@ function initializeApp() {
     const state = stateManager.getState();
     if (!state.currentProject) return;
 
-    // Find which chapters these positions correspond to
-    const startChapterId = findChapterAtPosition(startTimelineId, startPosition);
-    const endChapterId = findChapterAtPosition(endTimelineId, endPosition);
+    // Find which chapters these positions correspond to:
+    // - Start point: anchor to chapter on the LEFT (whose end is at this position)
+    // - End point: anchor to chapter on the RIGHT (whose start is at this position)
+    const startChapterId = findChapterToLeft(startTimelineId, startPosition);
+    const endChapterId = findChapterToRight(endTimelineId, endPosition);
 
     // Create branch with chapter associations
     const branch = createBranch(startTimelineId, startPosition, endTimelineId, endPosition);
@@ -475,11 +479,9 @@ function initializeApp() {
   }
 
   /**
-   * Find which chapter (if any) corresponds to a grid position on a timeline.
-   * Returns the ID of the chapter whose end position matches this position,
-   * or undefined if the position is at the tail or not on a valid chapter boundary.
+   * Find the chapter to the LEFT of a grid position (i.e., the chapter whose END is at this position)
    */
-  function findChapterAtPosition(continuityId: string, gridPosition: number): string | undefined {
+  function findChapterToLeft(continuityId: string, gridPosition: number): string | undefined {
     const state = stateManager.getState();
     if (!state.currentProject) return undefined;
 
@@ -503,6 +505,40 @@ function initializeApp() {
       
       // Check if position matches this chapter's end
       if (Math.abs(gridPosition - chapterEndPos) < 0.01) {
+        return chapter.id;
+      }
+
+      currentX += chapterWidth;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Find the chapter to the RIGHT of a grid position (i.e., the chapter whose START is at this position)
+   */
+  function findChapterToRight(continuityId: string, gridPosition: number): string | undefined {
+    const state = stateManager.getState();
+    if (!state.currentProject) return undefined;
+
+    const continuity = state.currentProject.continuities.find(c => c.id === continuityId);
+    if (!continuity) return undefined;
+
+    // Calculate chapter positions
+    const sortedChapters = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
+    let currentX = 1; // Start after Head
+
+    for (const chapter of sortedChapters) {
+      // Calculate width
+      let chapterWidth: number;
+      if (chapter.gridLength && chapter.gridLength > 0) {
+        chapterWidth = chapter.gridLength;
+      } else {
+        chapterWidth = Math.max(1, Math.ceil(chapter.title.length / 5));
+      }
+
+      // Check if position matches this chapter's start
+      if (Math.abs(gridPosition - currentX) < 0.01) {
         return chapter.id;
       }
 

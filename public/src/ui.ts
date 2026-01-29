@@ -2127,6 +2127,8 @@ export class UIComponents {
       lineStyle?: string;
       startEndpointStyle?: 'dot' | 'arrow' | 'none';
       endEndpointStyle?: 'dot' | 'arrow' | 'none';
+      startChapterId?: string; // For branches
+      endChapterId?: string; // For branches
       content?: string;
       fontSize?: number;
       alignX?: 'left' | 'center' | 'right';
@@ -2578,6 +2580,26 @@ export class UIComponents {
       });
     } else if (type === 'branch') {
       // Branch editing - description and line style fields
+      
+      // Check if this is a legacy branch (missing chapter IDs) and show warning
+      if (!data.startChapterId || !data.endChapterId) {
+        const warningDiv = document.createElement('div');
+        warningDiv.style.cssText = 'display: flex; align-items: flex-start; gap: 8px; padding: 12px; background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.3); border-radius: 4px; margin-bottom: 16px;';
+        
+        const warningIcon = document.createElement('img');
+        warningIcon.src = '/assets/icons/alert-triangle-yellow.svg';
+        warningIcon.style.cssText = 'width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px;';
+        warningIcon.alt = 'Warning';
+        
+        const warningText = document.createElement('div');
+        warningText.style.cssText = 'color: #f59e0b; font-size: 13px; line-height: 1.5;';
+        warningText.textContent = 'This branch was created in an outdated version of Continuity and may exhibit incorrect behavior. Please recreate the branch to ensure proper function.';
+        
+        warningDiv.appendChild(warningIcon);
+        warningDiv.appendChild(warningText);
+        content.appendChild(warningDiv);
+      }
+      
       const descGroup = document.createElement('div');
       descGroup.className = 'form-group';
       
