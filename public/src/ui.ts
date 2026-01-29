@@ -661,6 +661,11 @@ export class UIComponents {
               <p style="color: #666; font-size: 0.9rem; margin: 0 0 0.25rem 0;">Support</p>
               <a href="${appInfo.bugReportUrl || '#'}" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: none; font-weight: 500; display: inline-block;">Submit a bug report →</a>
             </div>
+            <div id="kofi-container" style="text-align: center; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e0e0e0;">
+              <a href="https://ko-fi.com/S6S51T8G4I" target="_blank" rel="noopener noreferrer">
+                <img src="/assets/images/support_me_on_kofi_beige.png" alt="Support me on Ko-fi" style="height: 36px; border: none; cursor: pointer;">
+              </a>
+            </div>
           </div>
         </div>
         <div class="modal-actions">
