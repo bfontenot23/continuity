@@ -207,6 +207,25 @@ function initializeApp() {
       }
     }
 
+    function handleShowSettings() {
+      const state = stateManager.getState();
+      if (!state.currentProject) return;
+
+      const appElement = document.getElementById('app');
+      if (!appElement) return;
+
+      const modal = UIComponents.createProjectSettingsModal(
+        state.currentProject,
+        (title: string, description: string) => {
+          stateManager.updateProject({
+            title,
+            description
+          });
+        }
+      );
+      appElement.appendChild(modal);
+    }
+
     mainWrapper.appendChild(
       UIComponents.createHeader(
         currentProject,
@@ -215,7 +234,8 @@ function initializeApp() {
         handleImport,
         handleExportPNG,
         handleShowAppInfo,
-        handleShowChangelog
+        handleShowChangelog,
+        handleShowSettings
       )
     );
 

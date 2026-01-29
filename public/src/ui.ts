@@ -6,7 +6,7 @@ import { Project, Continuity, createArc, createChapter, Arc } from './types';
 import { AppStateManager } from './state';
 
 export class UIComponents {
-  static createHeader(project: Project | null, onNewProject: () => void, onExport: () => void, onImport: (file: File) => void, onExportPNG: () => void = () => {}, onShowAppInfo: (() => void) | null = null, onShowChangelog: (() => void) | null = null): HTMLElement {
+  static createHeader(project: Project | null, onNewProject: () => void, onExport: () => void, onImport: (file: File) => void, onExportPNG: () => void = () => {}, onShowAppInfo: (() => void) | null = null, onShowChangelog: (() => void) | null = null, onShowSettings: (() => void) | null = null): HTMLElement {
     const header = document.createElement('header');
     header.className = 'topbar';
     header.innerHTML = `
@@ -22,6 +22,11 @@ export class UIComponents {
           <button id="changelog-btn" class="icon-btn" title="View changelog" style="width: 32px; height: 32px; padding: 4px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer;">
             <img src="/assets/icons/changelog.svg" alt="Changelog" style="width: 20px; height: 20px;">
           </button>
+          ${project ? `
+            <button id="settings-btn" class="icon-btn" title="Project settings" style="width: 32px; height: 32px; padding: 4px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer;">
+              <img src="/assets/icons/settings.svg" alt="Settings" style="width: 20px; height: 20px;">
+            </button>
+          ` : ''}
         </div>
         <div class="topbar-actions" role="group" aria-label="Project actions">
           <button id="new-project-btn" class="btn btn-primary-gradient" title="Start a new project">New Project</button>
@@ -46,6 +51,9 @@ export class UIComponents {
         <div class="hamburger-menu" id="hamburger-menu" role="menu">
           <button id="hamburger-info-btn" class="hamburger-menu-item" role="menuitem">App Info</button>
           <button id="hamburger-changelog-btn" class="hamburger-menu-item" role="menuitem">Changelog</button>
+          ${project ? `
+            <button id="hamburger-settings-btn" class="hamburger-menu-item" role="menuitem">Project Settings</button>
+          ` : ''}
           <button id="hamburger-new-project-btn" class="hamburger-menu-item" role="menuitem">New Project</button>
           ${project ? `
             <button id="hamburger-import-btn" class="hamburger-menu-item" role="menuitem">Import</button>
@@ -64,6 +72,11 @@ export class UIComponents {
     // Wire up changelog button (large screens)
     if (onShowChangelog) {
       header.querySelector('#changelog-btn')?.addEventListener('click', onShowChangelog);
+    }
+
+    // Wire up settings button (large screens)
+    if (onShowSettings) {
+      header.querySelector('#settings-btn')?.addEventListener('click', onShowSettings);
     }
 
     // Hamburger menu setup (before other buttons so closeHamburgerMenu is available)
@@ -132,6 +145,14 @@ export class UIComponents {
       header.querySelector('#hamburger-changelog-btn')?.addEventListener('click', () => {
         closeHamburgerMenu();
         onShowChangelog();
+      });
+    }
+
+    // Wire up hamburger settings button
+    if (onShowSettings) {
+      header.querySelector('#hamburger-settings-btn')?.addEventListener('click', () => {
+        closeHamburgerMenu();
+        onShowSettings();
       });
     }
 
@@ -762,6 +783,93 @@ export class UIComponents {
     return modal;
   }
 
+  static createProjectSettingsModal(project: Project, onSave: (title: string, description: string) => void): HTMLElement {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Project Settings</h2>
+        </div>
+        <form id="settings-form" class="modal-form" novalidate>
+          <div class="form-group">
+            <label for="project-title">Project Name</label>
+            <input 
+              type="text" 
+              id="project-title" 
+              name="project-title" 
+              placeholder="Enter project name..." 
+              value="${project.title}"
+              autofocus
+            />
+            <span id="project-title-error" class="form-error" style="display: none; color: #ff6b6b; font-size: 0.85rem; margin-top: 0.25rem;"></span>
+          </div>
+          <div class="form-group">
+            <label for="project-description">Project Description</label>
+            <textarea 
+              id="project-description" 
+              name="project-description" 
+              placeholder="Enter project description..." 
+              style="resize: vertical; min-height: 80px;"
+            >${project.description || ''}</textarea>
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="modal-cancel" class="btn btn-secondary">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    const form = modal.querySelector('#settings-form') as HTMLFormElement;
+    const titleInput = modal.querySelector('#project-title') as HTMLInputElement;
+    const descInput = modal.querySelector('#project-description') as HTMLTextAreaElement;
+    const titleError = modal.querySelector('#project-title-error') as HTMLSpanElement;
+    const cancelBtn = modal.querySelector('#modal-cancel') as HTMLButtonElement;
+
+    const closeModal = () => {
+      modal.remove();
+    };
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const title = titleInput.value.trim();
+
+      if (!title) {
+        titleError.textContent = 'Project name is required';
+        titleError.style.display = 'block';
+        titleInput.focus();
+        return;
+      }
+
+      titleError.style.display = 'none';
+      const description = descInput.value.trim();
+      closeModal();
+      onSave(title, description);
+    });
+
+    cancelBtn.addEventListener('click', closeModal);
+
+    // Close on escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+
+    // Close on overlay click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal();
+      }
+    });
+
+    return modal;
+  }
+
   static createProjectModal(onSubmit: (projectName: string) => void): HTMLElement {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
@@ -1221,6 +1329,10 @@ export class UIComponents {
         }
 
         #changelog-btn {
+          display: none !important;
+        }
+
+        #settings-btn {
           display: none !important;
         }
 
