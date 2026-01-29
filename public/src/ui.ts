@@ -667,7 +667,7 @@ export class UIComponents {
         <div class="modal-header">
           <h2>Create New Project</h2>
         </div>
-        <form id="project-form" class="modal-form">
+        <form id="project-form" class="modal-form" novalidate>
           <div class="form-group">
             <label for="project-name">Project Name</label>
             <input 
@@ -675,9 +675,9 @@ export class UIComponents {
               id="project-name" 
               name="project-name" 
               placeholder="Enter your project name..." 
-              required
               autofocus
             />
+            <span id="project-name-error" class="form-error" style="display: none; color: #ff6b6b; font-size: 0.85rem; margin-top: 0.25rem;"></span>
           </div>
           <div class="modal-actions">
             <button type="button" id="modal-cancel" class="btn btn-secondary">Cancel</button>
@@ -689,11 +689,25 @@ export class UIComponents {
 
     const form = modal.querySelector('#project-form') as HTMLFormElement;
     const input = modal.querySelector('#project-name') as HTMLInputElement;
+    const errorSpan = modal.querySelector('#project-name-error') as HTMLSpanElement;
     const cancelBtn = modal.querySelector('#modal-cancel') as HTMLButtonElement;
 
     const closeModal = () => {
       modal.remove();
     };
+
+    const showError = () => {
+      errorSpan.textContent = 'Please enter a project name';
+      errorSpan.style.display = 'block';
+      input.style.borderColor = '#ff6b6b';
+    };
+
+    const clearError = () => {
+      errorSpan.style.display = 'none';
+      input.style.borderColor = '';
+    };
+
+    input.addEventListener('input', clearError);
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -701,6 +715,8 @@ export class UIComponents {
       if (projectName) {
         closeModal();
         onSubmit(projectName);
+      } else {
+        showError();
       }
     });
 
@@ -1857,6 +1873,18 @@ export class UIComponents {
 
       .textbox-overlay {
         z-index: 1;
+      }
+
+      .form-error {
+        color: #ff6b6b;
+        font-size: 0.85rem;
+        margin-top: 0.25rem;
+        display: block;
+      }
+
+      input.has-error {
+        border-color: #ff6b6b !important;
+        background-color: #fff5f5;
       }
     `;
     return style;
