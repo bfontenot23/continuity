@@ -6,7 +6,7 @@ import { Project, Continuity, createArc, createChapter, Arc } from './types';
 import { AppStateManager } from './state';
 
 export class UIComponents {
-  static createHeader(project: Project | null, onNewProject: () => void, onExport: () => void, onImport: (file: File) => void, onExportPNG: () => void = () => {}): HTMLElement {
+  static createHeader(project: Project | null, onNewProject: () => void, onExport: () => void, onImport: (file: File) => void, onExportPNG: () => void = () => {}, onShowAppInfo: (() => void) | null = null): HTMLElement {
     const header = document.createElement('header');
     header.className = 'topbar';
     header.innerHTML = `
@@ -16,6 +16,9 @@ export class UIComponents {
             <span class="brand-title">Continuity</span>
             <span class="brand-subtitle">Story Planner & Timeline Manager</span>
           </div>
+          <button id="info-btn" class="icon-btn" title="App information" style="width: 32px; height: 32px; padding: 4px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; margin-left: 0.5rem;">
+            <img src="/assets/icons/info-circle.svg" alt="Info" style="width: 20px; height: 20px;">
+          </button>
         </div>
         <div class="topbar-actions" role="group" aria-label="Project actions">
           <button id="new-project-btn" class="btn btn-primary-gradient" title="Start a new project">New Project</button>
@@ -34,6 +37,11 @@ export class UIComponents {
         </div>
       </div>
     `;
+
+    // Wire up info button
+    if (onShowAppInfo) {
+      header.querySelector('#info-btn')?.addEventListener('click', onShowAppInfo);
+    }
 
     header.querySelector('#new-project-btn')?.addEventListener('click', onNewProject);
 
@@ -394,6 +402,125 @@ export class UIComponents {
     });
 
     cancelBtn.addEventListener('click', closeModal);
+
+    // Close on escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+
+    // Close on overlay click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal();
+      }
+    });
+
+    return modal;
+  }
+
+  static createVersionWarningModal(message: string, onConfirm: () => void): HTMLElement {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Project Version Mismatch</h2>
+        </div>
+        <div class="modal-body" style="text-align: center;">
+          <div style="margin-bottom: 1rem;">
+            <img src="/assets/icons/alert-triangle.svg" alt="Warning" style="width: 48px; height: 48px; margin: 0 auto 1rem; display: block;">
+          </div>
+          <p style="color: #ff6b6b; font-weight: 600; margin: 0 0 0.75rem 0; font-size: 1.1rem;">Warning</p>
+          <p style="margin: 0 0 1rem 0;">${message}</p>
+          <p style="font-size: 0.9rem; color: #666; margin: 0;">You can still continue to load the project, but some features may not work correctly. After opening, consider exporting the project again to update it to the current version.</p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="modal-cancel" class="btn btn-secondary">Cancel Import</button>
+          <button type="button" id="modal-confirm" class="btn btn-primary">Continue Anyway</button>
+        </div>
+      </div>
+    `;
+
+    const cancelBtn = modal.querySelector('#modal-cancel') as HTMLButtonElement;
+    const confirmBtn = modal.querySelector('#modal-confirm') as HTMLButtonElement;
+
+    const closeModal = () => {
+      modal.remove();
+    };
+
+    confirmBtn.addEventListener('click', () => {
+      closeModal();
+      onConfirm();
+    });
+
+    cancelBtn.addEventListener('click', closeModal);
+
+    // Close on escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+
+    // Close on overlay click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal();
+      }
+    });
+
+    return modal;
+  }
+
+  static createAppInfoModal(appInfo: { version: string; copyright?: string; license?: string; bugReportUrl?: string }): HTMLElement {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+          <h2>About Continuity</h2>
+        </div>
+        <div class="modal-body">
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <div>
+              <p style="color: #666; font-size: 0.9rem; margin: 0 0 0.25rem 0;">Version</p>
+              <p style="font-weight: 600; font-size: 1.1rem; margin: 0;">${appInfo.version}</p>
+            </div>
+            <div>
+              <p style="color: #666; font-size: 0.9rem; margin: 0 0 0.25rem 0;">License</p>
+              <p style="margin: 0;">${appInfo.license || 'N/A'}</p>
+            </div>
+            <div>
+              <p style="color: #666; font-size: 0.9rem; margin: 0 0 0.25rem 0;">Copyright</p>
+              <p style="margin: 0;">${appInfo.copyright || 'N/A'}</p>
+            </div>
+            <div>
+              <p style="color: #666; font-size: 0.9rem; margin: 0 0 0.25rem 0;">Support</p>
+              <a href="${appInfo.bugReportUrl || '#'}" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: none; font-weight: 500; display: inline-block;">Submit a bug report →</a>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="modal-close" class="btn btn-primary">Close</button>
+        </div>
+      </div>
+    `;
+
+    const closeBtn = modal.querySelector('#modal-close') as HTMLButtonElement;
+
+    const closeModal = () => {
+      modal.remove();
+    };
+
+    closeBtn.addEventListener('click', closeModal);
 
     // Close on escape key
     const handleEscape = (e: KeyboardEvent) => {

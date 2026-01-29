@@ -184,13 +184,23 @@ function initializeApp() {
     }
 
     // Add header (only shown when project is loaded)
+    async function handleShowAppInfo() {
+      const appInfo = await ContinuityFileManager.loadAppInfo();
+      const appElement = document.getElementById('app');
+      if (appElement) {
+        const modal = UIComponents.createAppInfoModal(appInfo);
+        appElement.appendChild(modal);
+      }
+    }
+
     mainWrapper.appendChild(
       UIComponents.createHeader(
         currentProject,
         openNewProjectModal,
         handleExport,
         handleImport,
-        handleExportPNG
+        handleExportPNG,
+        handleShowAppInfo
       )
     );
 
@@ -532,10 +542,10 @@ function initializeApp() {
     preservedSidebarState = { type: 'line', id: lineId };
   }
 
-  function handleExport() {
+  async function handleExport() {
     const state = stateManager.getState();
     if (state.currentProject) {
-      ContinuityFileManager.exportProject(state.currentProject);
+      await ContinuityFileManager.exportProject(state.currentProject);
     }
   }
 
@@ -550,12 +560,32 @@ function initializeApp() {
 
   async function handleImport(file: File) {
     try {
-      const project = await ContinuityFileManager.importProject(file);
-      stateManager.setProject(project);
-      renderUI();
-      // Center on the first timeline after import
-      if (project.continuities.length > 0 && canvasInstance) {
-        canvasInstance.centerOnTimeline(project.continuities[0].id);
+      const result = await ContinuityFileManager.importProject(file);
+      const { project, versionWarning } = result;
+      
+      // If there's a version warning, show it first
+      if (versionWarning) {
+        const appElement = document.getElementById('app');
+        if (appElement) {
+          const modal = UIComponents.createVersionWarningModal(versionWarning, () => {
+            // User confirmed despite warning
+            stateManager.setProject(project);
+            renderUI();
+            // Center on the first timeline after import
+            if (project.continuities.length > 0 && canvasInstance) {
+              canvasInstance.centerOnTimeline(project.continuities[0].id);
+            }
+          });
+          appElement.appendChild(modal);
+        }
+      } else {
+        // No warning, proceed normally
+        stateManager.setProject(project);
+        renderUI();
+        // Center on the first timeline after import
+        if (project.continuities.length > 0 && canvasInstance) {
+          canvasInstance.centerOnTimeline(project.continuities[0].id);
+        }
       }
     } catch (error) {
       alert(`Import failed: ${error instanceof Error ? error.message : String(error)}`);

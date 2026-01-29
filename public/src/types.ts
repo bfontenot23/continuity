@@ -78,6 +78,7 @@ export interface Project {
   description?: string;
   created: number;
   modified: number;
+  appVersion?: string; // Version of the app that exported this file
   continuities: Continuity[];
   textboxes: Textbox[]; // Free-floating textboxes with markdown support
   lines: Line[]; // Free-floating lines with grid-locked positions

@@ -6,12 +6,62 @@ import { Project } from './types';
  */
 
 export class ContinuityFileManager {
+  private static appInfo: { version: string; copyright?: string; license?: string; bugReportUrl?: string } | null = null;
+  
+  /**
+   * Load app info from app_info.json
+   */
+  static async loadAppInfo(): Promise<{ version: string; copyright?: string; license?: string; bugReportUrl?: string }> {
+    if (this.appInfo) {
+      return this.appInfo;
+    }
+    
+    try {
+      const response = await fetch('/assets/app_info.json');
+      if (!response.ok) {
+        throw new Error('Failed to load app_info.json');
+      }
+      this.appInfo = await response.json();
+      return this.appInfo;
+    } catch (error) {
+      console.error('Error loading app info:', error);
+      // Return a default version if app_info.json is not available
+      return { version: '26.1.2' };
+    }
+  }
+
+  /**
+   * Compare two version strings (e.g., "26.1.2")
+   * Returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2
+   */
+  static compareVersions(v1: string, v2: string): number {
+    const parts1 = v1.split('.').map(p => parseInt(p, 10));
+    const parts2 = v2.split('.').map(p => parseInt(p, 10));
+    
+    for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+      const part1 = parts1[i] || 0;
+      const part2 = parts2[i] || 0;
+      if (part1 < part2) return -1;
+      if (part1 > part2) return 1;
+    }
+    
+    return 0;
+  }
+
   /**
    * Export a project to a .cty file
    */
-  static exportProject(project: Project, filename?: string): void {
-    const ctyFilename = filename || `${project.title.replace(/\s+/g, '-')}.cty`;
-    const json = JSON.stringify(project, null, 2);
+  static async exportProject(project: Project, filename?: string): Promise<void> {
+    const appInfo = await this.loadAppInfo();
+    
+    // Add current app version to project
+    const projectToExport = {
+      ...project,
+      appVersion: appInfo.version
+    };
+    
+    const ctyFilename = filename || `${projectToExport.title.replace(/\s+/g, '-')}.cty`;
+    const json = JSON.stringify(projectToExport, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -25,11 +75,12 @@ export class ContinuityFileManager {
 
   /**
    * Import a project from a .cty file
+   * Returns the project and a version check result
    */
-  static async importProject(file: File): Promise<Project> {
+  static async importProject(file: File): Promise<{ project: Project; versionWarning?: string }> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
         try {
           const json = event.target?.result as string;
           const project = JSON.parse(json) as Project;
@@ -39,10 +90,20 @@ export class ContinuityFileManager {
             throw new Error('Invalid .cty file format');
           }
           
+          // Check version and generate warning if needed
+          const appInfo = await this.loadAppInfo();
+          const fileVersion = project.appVersion || '26.1.1'; // Treat unmarked files as v26.1.1
+          const currentVersion = appInfo.version;
+          
+          let versionWarning: string | undefined;
+          if (this.compareVersions(fileVersion, currentVersion) < 0) {
+            versionWarning = `This project was created with version ${fileVersion} but you are using version ${currentVersion}. Some features may not work correctly. Consider resaving the project to update it.`;
+          }
+          
           // Migrate old projects to include branches array
           this.migrateProject(project);
           
-          resolve(project);
+          resolve({ project, versionWarning });
         } catch (error) {
           reject(new Error(`Failed to parse .cty file: ${error instanceof Error ? error.message : String(error)}`));
         }
