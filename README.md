@@ -266,10 +266,10 @@ Connection between chapters across different timelines:
 Deploy to Cloudflare Pages:
 
 ```bash
-npm run build
+npm run deploy
 ```
 
-Upload the `public/dist` directory to Cloudflare Pages, or connect your repository for automatic deployments.
+Or manually upload the `dist` directory to Cloudflare Pages, or connect your repository for automatic deployments.
 
 ## Browser Support
 
