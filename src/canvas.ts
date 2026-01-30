@@ -1731,7 +1731,7 @@ export class TimelineCanvas {
     this.render();
   }
 
-  private render(): void {
+  public render(): void {
     // Update centering animation
     if (this.isCentering) {
       const elapsed = Date.now() - this.centeringStartTime;

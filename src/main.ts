@@ -17,13 +17,6 @@ function getBaseTextScale(): number {
   return window.screen.width > 1800 ? 1.25 : 1.0;
 }
 
-// Apply text size scaling based on user preference
-function applyTextSizeScaling(textSize?: 'small' | 'normal' | 'large') {
-  // Text size only affects canvas rendering, not DOM elements
-  // The canvas instance will be updated separately via setTextSizeMultiplier
-  // This is just a placeholder function for when settings change
-}
-
 const stateManager = new AppStateManager();
 let currentEditSidebar: HTMLElement | null = null;
 let preservedSidebarState: { type: 'timeline' | 'chapter' | 'branch' | 'textbox' | 'line'; id: string } | null = null;
@@ -206,9 +199,6 @@ function initializeApp() {
       return;
     }
 
-    // Apply text size scaling when project is loaded
-    applyTextSizeScaling(currentProject.textSize);
-
     // Add header (only shown when project is loaded)
     async function handleShowAppInfo() {
       const appInfo = await ContinuityFileManager.loadAppInfo();
@@ -243,8 +233,6 @@ function initializeApp() {
             description,
             textSize
           });
-          // Apply text size scaling immediately
-          applyTextSizeScaling(textSize);
           // Update canvas text size with combined scale
           if (canvasInstance) {
             const baseScale = getBaseTextScale();
