@@ -7,11 +7,10 @@ public/dist/
 .vite/
 *.tsbuildinfo
 
-# Firebase
-.firebase/
-firebase-debug.log
-firestore-debug.log
-ui-debug.log
+# Cloudflare Pages
+.dev.vars
+.wrangler/
+wrangler.toml.local
 
 # Logs
 *.log

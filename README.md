@@ -263,14 +263,13 @@ Connection between chapters across different timelines:
 
 ## Deployment
 
-Deploy to Firebase Hosting:
+Deploy to Cloudflare Pages:
 
 ```bash
 npm run build
-firebase deploy
 ```
 
-Requires Firebase CLI and a configured Firebase project.
+Upload the `public/dist` directory to Cloudflare Pages, or connect your repository for automatic deployments.
 
 ## Browser Support
 
@@ -285,7 +284,7 @@ Requires Firebase CLI and a configured Firebase project.
 - **Build Tool**: Vite 5.x
 - **Styling**: CSS with responsive design
 - **Storage**: Browser local storage + `.cty` files
-- **Deployment**: Firebase Hosting
+- **Deployment**: Cloudflare Pages
 - **Architecture**: Pure TypeScript with listener-based state management (no frameworks)
 
 ## Project Structure
