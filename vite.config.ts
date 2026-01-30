@@ -2,8 +2,7 @@ import { defineConfig } from 'vite'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 
 export default defineConfig({
-  root: 'public',
-  publicDir: false,
+  publicDir: 'public',
   server: {
     port: 3000,
     open: true,
