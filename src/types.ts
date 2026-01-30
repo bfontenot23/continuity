@@ -79,6 +79,7 @@ export interface Project {
   created: number;
   modified: number;
   appVersion?: string; // Version of the app that exported this file
+  textSize?: 'small' | 'normal' | 'large'; // UI text size setting (80%, 100%, 125%)
   continuities: Continuity[];
   textboxes: Textbox[]; // Free-floating textboxes with markdown support
   lines: Line[]; // Free-floating lines with grid-locked positions

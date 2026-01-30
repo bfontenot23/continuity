@@ -9,6 +9,7 @@ This is a smaller update mostly focused on rounding out the website itself as we
 \+ Version changelogs can now be viewed by clicking the clipboard icon.
 \+ Project settings (title and description) can now be changed by clicking the settings icon.
 \+ Arcs are now draggable in the timeline edit menu.
+\+ You can now change the text size in project settings
 \- Arc Mode has been removed (Arcs are now visible by default).
 
 ## Bug Fixes

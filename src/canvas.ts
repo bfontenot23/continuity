@@ -148,6 +148,9 @@ export class TimelineCanvas {
   private suppressMenuRender: boolean = false; // Hide menu for exports/snapshots
   private suppressTextboxRender: boolean = false; // Skip DOM textbox overlay (e.g., offscreen export)
   
+  // Text size scaling (public for direct access when combining viewport and user settings)
+  public textSizeMultiplier: number = 1.0; // Multiplier for all canvas text rendering
+  
   // Callbacks
   private onAddTimeline: (() => void) | null = null;
   private onAddChapter: ((timelineId: string, position: number) => void) | null = null;
@@ -276,7 +279,7 @@ export class TimelineCanvas {
         }
 
         // Check if clicking menu item
-        const clickedOptionId = this.menu.getClickedOption(mouseX, mouseY);
+        const clickedOptionId = this.menu.getClickedOption(mouseX, mouseY, this.textSizeMultiplier);
         if (clickedOptionId) {
           // Handle the option click
           if (clickedOptionId === 'new-timeline' && this.onAddTimeline) {
@@ -797,7 +800,7 @@ export class TimelineCanvas {
 
       // Update menu hover state
       const previousHoveredOption = this.hoveredMenuOptionId;
-      this.hoveredMenuOptionId = this.menu.getHoveredOption(mouseX, mouseY);
+      this.hoveredMenuOptionId = this.menu.getHoveredOption(mouseX, mouseY, this.textSizeMultiplier);
       
       // Trigger render if hover state changed
       if (previousHoveredOption !== this.hoveredMenuOptionId) {
@@ -1349,6 +1352,21 @@ export class TimelineCanvas {
     this.render();
   }
 
+  setTextSizeMultiplier(size: 'small' | 'normal' | 'large'): void {
+    switch (size) {
+      case 'small':
+        this.textSizeMultiplier = 0.8;
+        break;
+      case 'normal':
+        this.textSizeMultiplier = 1.0;
+        break;
+      case 'large':
+        this.textSizeMultiplier = 1.25;
+        break;
+    }
+    this.render();
+  }
+
   toggleInsertionMode(): void {
     this.insertionMode = !this.insertionMode;
     this.hoveredInsertionPoint = { timelineId: null, position: -1 };
@@ -1400,6 +1418,7 @@ export class TimelineCanvas {
     const originalSuppressMenuRender = this.suppressMenuRender;
     const wasMenuOpen = this.menu.isOpen();
     const originalSuppressTextboxRender = this.suppressTextboxRender;
+    const originalTextSizeMultiplier = this.textSizeMultiplier;
 
     // Switch to offscreen rendering context
     this.canvas = tempCanvas;
@@ -1409,6 +1428,9 @@ export class TimelineCanvas {
     this.zoom = 1;
     this.offsetX = padding - bounds.minX;
     this.offsetY = padding - bounds.minY;
+
+    // Use standard text size for exports (ignore user settings)
+    this.textSizeMultiplier = 1.0;
 
     // Hide menu while exporting
     this.suppressMenuRender = true;
@@ -1429,6 +1451,7 @@ export class TimelineCanvas {
     this.zoom = originalZoom;
     this.suppressMenuRender = originalSuppressMenuRender;
     this.suppressTextboxRender = originalSuppressTextboxRender;
+    this.textSizeMultiplier = originalTextSizeMultiplier;
     if (wasMenuOpen) {
       this.menu.open();
     }
@@ -1763,7 +1786,7 @@ export class TimelineCanvas {
     // Clear menu canvas
     this.menuCtx.clearRect(0, 0, this.menuCanvas.width, this.menuCanvas.height);
     // Render menu to menu canvas
-    this.menu.render(this.menuCtx, this.menuCanvas.height, this.hoveredMenuOptionId);
+    this.menu.render(this.menuCtx, this.menuCanvas.height, this.hoveredMenuOptionId, this.textSizeMultiplier);
   }
 
   private drawGrid(): void {
@@ -2006,7 +2029,7 @@ export class TimelineCanvas {
           
           // Draw chapter title above the timeline (stays black)
           this.ctx.fillStyle = '#333333';
-          this.ctx.font = '12px sans-serif';
+          this.ctx.font = `${12 * this.textSizeMultiplier}px sans-serif`;
           this.ctx.textBaseline = 'bottom';
           this.ctx.textAlign = 'center';
           
@@ -2044,10 +2067,12 @@ export class TimelineCanvas {
         
         // Draw arc title centered above the arc group
         this.ctx.fillStyle = darkenedColor;
-        this.ctx.font = 'bold 13px sans-serif';
+        this.ctx.font = `bold ${13 * this.textSizeMultiplier}px sans-serif`;
         this.ctx.textBaseline = 'bottom';
         this.ctx.textAlign = 'center';
-        this.ctx.fillText(arc.name, centerX, screenY - 28);
+        // Adjust Y position based on text size to prevent overlap
+        const arcTextYOffset = 28 + (this.textSizeMultiplier - 1) * 5;
+        this.ctx.fillText(arc.name, centerX, screenY - arcTextYOffset);
       });
 
       // Draw arrow at the end (unless tail is hidden by a branch)
@@ -2170,7 +2195,7 @@ export class TimelineCanvas {
 
       // Draw timeline title
       this.ctx.fillStyle = '#333333';
-      this.ctx.font = '14px sans-serif';
+      this.ctx.font = `${14 * this.textSizeMultiplier}px sans-serif`;
       this.ctx.textBaseline = 'middle';
       this.ctx.textAlign = 'right';
       const titleGap = 10;
@@ -2578,7 +2603,7 @@ export class TimelineCanvas {
       const screenY = timeline.y * this.zoom + this.offsetY;
 
       // Check if clicking on timeline title (now positioned to the left of timeline)
-      this.ctx.font = '14px sans-serif';
+      this.ctx.font = `${14 * this.textSizeMultiplier}px sans-serif`;
       this.ctx.textAlign = 'right';
       const titleMetrics = this.ctx.measureText(timeline.name);
       const titleGap = 10; // Same gap used when drawing
@@ -2619,7 +2644,7 @@ export class TimelineCanvas {
       const screenY = timeline.y * this.zoom + this.offsetY;
 
       // Check title area
-      this.ctx.font = '14px sans-serif';
+      this.ctx.font = `${14 * this.textSizeMultiplier}px sans-serif`;
       this.ctx.textAlign = 'right';
       const titleMetrics = this.ctx.measureText(timeline.name);
       const titleGap = 10;
@@ -2757,7 +2782,7 @@ export class TimelineCanvas {
         const centerX = (startX + endX) / 2;
 
         // Calculate text bounds
-        this.ctx.font = 'bold 13px sans-serif';
+        this.ctx.font = `bold ${13 * this.textSizeMultiplier}px sans-serif`;
         const textMetrics = this.ctx.measureText(arc.name);
         const textWidth = textMetrics.width;
         const textHeight = 16; // Approximate
@@ -3593,15 +3618,19 @@ class MenuSystem {
   /**
    * Get button and menu positions/dimensions
    */
-  private getLayout(ctx?: CanvasRenderingContext2D) {
+  private getLayout(ctx?: CanvasRenderingContext2D, textSizeMultiplier: number = 1.0) {
     const buttonX = this.buttonPadding;
     // Fallback to a reasonable default if canvas height is 0
     const buttonY = (this.canvasHeight || 400) - this.buttonSize - this.buttonPadding;
     
+    // Scale dimensions based on text size
+    const scaledOptionHeight = this.optionHeight * textSizeMultiplier;
+    const scaledOptionPadding = this.optionPadding * textSizeMultiplier;
+    
     // Calculate menu dimensions when fully expanded
     // Measure text width for accurate menu width
     if (ctx) {
-      ctx.font = 'bold 14px sans-serif';
+      ctx.font = `bold ${14 * textSizeMultiplier}px sans-serif`;
       let maxTextWidth = 0;
       this.options.forEach(option => {
         const metrics = ctx.measureText(option.label);
@@ -3609,19 +3638,21 @@ class MenuSystem {
         
         // Also measure keybind if present (it's usually shorter, but check anyway)
         if (option.keybind) {
-          ctx.font = '11px sans-serif';
+          ctx.font = `${11 * textSizeMultiplier}px sans-serif`;
           const keybindMetrics = ctx.measureText(option.keybind);
           maxTextWidth = Math.max(maxTextWidth, keybindMetrics.width);
-          ctx.font = 'bold 14px sans-serif'; // Reset to label font
+          ctx.font = `bold ${14 * textSizeMultiplier}px sans-serif`; // Reset to label font
         }
       });
-      this.cachedMenuWidth = maxTextWidth + this.optionPadding * 2 + this.menuMargin * 2;
+      
+      // Cache the menu width based on text measurements
+      this.cachedMenuWidth = Math.max(150, maxTextWidth + scaledOptionPadding * 4);
     }
     
     const menuWidth = this.cachedMenuWidth;
-    const menuHeight = (this.options.length * this.optionHeight) + this.menuMargin * 2;
+    const menuHeight = this.menuMargin * 2 + (this.options.length * scaledOptionHeight);
     
-    // Interpolate current dimensions based on progress
+    // Calculate current animated dimensions
     const currentWidth = this.buttonSize + (menuWidth - this.buttonSize) * this.animationProgress;
     const currentHeight = this.buttonSize + (menuHeight - this.buttonSize) * this.animationProgress;
     
@@ -3639,7 +3670,9 @@ class MenuSystem {
       currentHeight,
       menuWidth,
       menuHeight,
-      optionStartY: menuTopY + this.menuMargin
+      optionStartY: menuTopY + this.menuMargin,
+      scaledOptionHeight,
+      scaledOptionPadding
     };
   }
   
@@ -3647,7 +3680,7 @@ class MenuSystem {
    * Check if clicking the menu button
    */
   isClickingButton(mouseX: number, mouseY: number): boolean {
-    const layout = this.getLayout();
+    const layout = this.getLayout(undefined, 1.0);
     const centerX = layout.buttonX + layout.buttonSize / 2;
     const centerY = layout.buttonY + layout.buttonSize / 2;
     const distance = Math.sqrt(Math.pow(mouseX - centerX, 2) + Math.pow(mouseY - centerY, 2));
@@ -3658,19 +3691,19 @@ class MenuSystem {
   /**
    * Get which option is being hovered (if any)
    */
-  getHoveredOption(mouseX: number, mouseY: number): string | null {
+  getHoveredOption(mouseX: number, mouseY: number, textSizeMultiplier: number = 1.0): string | null {
     if (!this.isOpened || this.animationProgress <= 0.3 || this.canvasHeight === 0) {
       return null;
     }
     
-    const layout = this.getLayout();
+    const layout = this.getLayout(undefined, textSizeMultiplier);
     
     for (let i = 0; i < this.options.length; i++) {
-      const optionY = layout.optionStartY + (i * this.optionHeight);
-      const optionLeft = layout.buttonX + this.optionPadding;
-      const optionRight = layout.buttonX + layout.currentWidth - this.optionPadding;
+      const optionY = layout.optionStartY + (i * layout.scaledOptionHeight);
+      const optionLeft = layout.buttonX + layout.scaledOptionPadding;
+      const optionRight = layout.buttonX + layout.currentWidth - layout.scaledOptionPadding;
       const optionTop = optionY;
-      const optionBottom = optionY + this.optionHeight;
+      const optionBottom = optionY + layout.scaledOptionHeight;
       
       if (
         mouseX >= optionLeft &&
@@ -3688,20 +3721,20 @@ class MenuSystem {
   /**
    * Get which option was clicked (if any)
    */
-  getClickedOption(mouseX: number, mouseY: number): string | null {
+  getClickedOption(mouseX: number, mouseY: number, textSizeMultiplier: number = 1.0): string | null {
     if (!this.isOpened || this.animationProgress <= 0.3) {
       return null;
     }
     
-    return this.getHoveredOption(mouseX, mouseY);
+    return this.getHoveredOption(mouseX, mouseY, textSizeMultiplier);
   }
   
   /**
    * Render the menu
    */
-  render(ctx: CanvasRenderingContext2D, canvasHeight: number, hoveredOptionId: string | null): void {
+  render(ctx: CanvasRenderingContext2D, canvasHeight: number, hoveredOptionId: string | null, textSizeMultiplier: number = 1.0): void {
     this.canvasHeight = canvasHeight;
-    const layout = this.getLayout(ctx);
+    const layout = this.getLayout(ctx, textSizeMultiplier);
     
     // Draw menu button background and expanded menu
     const gradient = ctx.createLinearGradient(layout.buttonX, layout.menuTopY, layout.buttonX + layout.currentWidth, layout.menuTopY + layout.currentHeight);
@@ -3728,41 +3761,45 @@ class MenuSystem {
       ctx.lineTo(centerX + 12, centerY);
       ctx.stroke();
     } else {
-      // Draw menu options
-      this.options.forEach((option, index) => {
-        const optionY = layout.optionStartY + (index * this.optionHeight);
-        const isHovered = hoveredOptionId === option.id;
-        
-        // Draw option background only if hovered
-        if (isHovered) {
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-          this.drawRoundedRect(ctx, layout.buttonX + this.optionPadding, optionY, layout.currentWidth - this.optionPadding * 2, this.optionHeight, 6);
+      // Draw menu options (show when progress > 0.15 for smoother appearance)
+      if (this.animationProgress > 0.15) {
+        this.options.forEach((option, index) => {
+          const optionY = layout.optionStartY + (index * layout.scaledOptionHeight);
+          const isHovered = hoveredOptionId === option.id;
           
-          // Draw a rounded border on hover
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-          ctx.lineWidth = 2;
-          this.drawRoundedRectStroke(ctx, layout.buttonX + this.optionPadding, optionY, layout.currentWidth - this.optionPadding * 2, this.optionHeight, 6);
-        }
-        
-        // Draw text
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        
-        // If there's a keybind, shift the label up and add keybind below
-        if (option.keybind) {
-          ctx.font = 'bold 14px sans-serif';
-          ctx.fillText(option.label, layout.buttonX + layout.currentWidth / 2, optionY + this.optionHeight / 2 - 7);
+          // Draw option background only if hovered
+          if (isHovered) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+            this.drawRoundedRect(ctx, layout.buttonX + layout.scaledOptionPadding, optionY, layout.currentWidth - layout.scaledOptionPadding * 2, layout.scaledOptionHeight, 6);
+            
+            // Draw a rounded border on hover
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.lineWidth = 2;
+            this.drawRoundedRectStroke(ctx, layout.buttonX + layout.scaledOptionPadding, optionY, layout.currentWidth - layout.scaledOptionPadding * 2, layout.scaledOptionHeight, 6);
+          }
           
-          ctx.font = '11px sans-serif';
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-          ctx.fillText(option.keybind, layout.buttonX + layout.currentWidth / 2, optionY + this.optionHeight / 2 + 8);
-        } else {
-          // No keybind, center the label
-          ctx.font = 'bold 14px sans-serif';
-          ctx.fillText(option.label, layout.buttonX + layout.currentWidth / 2, optionY + this.optionHeight / 2);
-        }
-      });
+          // Draw text
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          
+          // If there's a keybind, shift the label up and add keybind below
+          if (option.keybind) {
+            ctx.font = `bold ${14 * textSizeMultiplier}px sans-serif`;
+            ctx.fillText(option.label, layout.buttonX + layout.currentWidth / 2, optionY + layout.scaledOptionHeight / 2 - 7);
+            
+            ctx.font = `${11 * textSizeMultiplier}px sans-serif`;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            // Adjust keybind position down by 5px for each 0.25 increase in text size
+            const keybindYOffset = 8 + (textSizeMultiplier - 1) * 20;
+            ctx.fillText(option.keybind, layout.buttonX + layout.currentWidth / 2, optionY + layout.scaledOptionHeight / 2 + keybindYOffset);
+          } else {
+            // No keybind, center the label
+            ctx.font = `bold ${14 * textSizeMultiplier}px sans-serif`;
+            ctx.fillText(option.label, layout.buttonX + layout.currentWidth / 2, optionY + layout.scaledOptionHeight / 2);
+          }
+        });
+      }
     }
   }
   

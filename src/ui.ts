@@ -788,7 +788,7 @@ export class UIComponents {
     return modal;
   }
 
-  static createProjectSettingsModal(project: Project, onSave: (title: string, description: string) => void): HTMLElement {
+  static createProjectSettingsModal(project: Project, onSave: (title: string, description: string, textSize: 'small' | 'normal' | 'large') => void): HTMLElement {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
 
@@ -819,6 +819,14 @@ export class UIComponents {
               style="resize: vertical; min-height: 80px;"
             >${project.description || ''}</textarea>
           </div>
+          <div class="form-group">
+            <label for="text-size">Text Size</label>
+            <select id="text-size" name="text-size" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 100%; font-size: 0.95rem;">
+              <option value="small" ${project.textSize === 'small' ? 'selected' : ''}>Small (80%)</option>
+              <option value="normal" ${!project.textSize || project.textSize === 'normal' ? 'selected' : ''}>Normal (100%)</option>
+              <option value="large" ${project.textSize === 'large' ? 'selected' : ''}>Large (125%)</option>
+            </select>
+          </div>
           <div class="modal-actions">
             <button type="button" id="modal-cancel" class="btn btn-secondary">Cancel</button>
             <button type="submit" class="btn btn-primary">Save</button>
@@ -830,6 +838,7 @@ export class UIComponents {
     const form = modal.querySelector('#settings-form') as HTMLFormElement;
     const titleInput = modal.querySelector('#project-title') as HTMLInputElement;
     const descInput = modal.querySelector('#project-description') as HTMLTextAreaElement;
+    const textSizeSelect = modal.querySelector('#text-size') as HTMLSelectElement;
     const titleError = modal.querySelector('#project-title-error') as HTMLSpanElement;
     const cancelBtn = modal.querySelector('#modal-cancel') as HTMLButtonElement;
 
@@ -850,8 +859,9 @@ export class UIComponents {
 
       titleError.style.display = 'none';
       const description = descInput.value.trim();
+      const textSize = textSizeSelect.value as 'small' | 'normal' | 'large';
       closeModal();
-      onSave(title, description);
+      onSave(title, description, textSize);
     });
 
     cancelBtn.addEventListener('click', closeModal);
@@ -1126,22 +1136,32 @@ export class UIComponents {
       }
 
       .topbar {
-        background: #0f172a;
+        background: transparent;
         color: #e2e8f0;
-        padding: 0.65rem 1rem;
-        border-bottom: 1px solid #1f2937;
-        position: sticky;
+        padding: 0;
+        border-bottom: none;
+        position: absolute;
         top: 0;
+        left: 0;
+        right: 0;
         z-index: 5;
+        display: flex;
+        justify-content: center;
+        pointer-events: none;
       }
 
       .topbar-inner {
         max-width: 1400px;
-        margin: 0 auto;
+        width: 100%;
+        background: #0f172a;
+        border-bottom: 1px solid #1f2937;
+        border-radius: 0 0 12px 12px;
+        padding: 0.65rem 1rem;
         display: flex;
         align-items: center;
         gap: 0.75rem;
         flex-wrap: wrap;
+        pointer-events: auto;
       }
 
       .brand {
@@ -1413,6 +1433,7 @@ export class UIComponents {
         flex: 1;
         overflow: hidden;
         flex-direction: column;
+        position: relative;
       }
 
       .continuity-nav {

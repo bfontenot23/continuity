@@ -8,6 +8,22 @@ import { TimelineCanvas } from './canvas';
  * Main application entry point
  */
 
+// Calculate base text scale for high-resolution displays
+function getBaseTextScale(): number {
+  // Apply 125% base scale on screens wider than 1800px
+  // Uses screen.width (not window.innerWidth) so it persists regardless of browser size
+  // This accounts for the topbar max-width of 1400px + margins
+  // On very wide displays, the extra space makes default text too small
+  return window.screen.width > 1800 ? 1.25 : 1.0;
+}
+
+// Apply text size scaling based on user preference
+function applyTextSizeScaling(textSize?: 'small' | 'normal' | 'large') {
+  // Text size only affects canvas rendering, not DOM elements
+  // The canvas instance will be updated separately via setTextSizeMultiplier
+  // This is just a placeholder function for when settings change
+}
+
 const stateManager = new AppStateManager();
 let currentEditSidebar: HTMLElement | null = null;
 let preservedSidebarState: { type: 'timeline' | 'chapter' | 'branch' | 'textbox' | 'line'; id: string } | null = null;
@@ -190,6 +206,9 @@ function initializeApp() {
       return;
     }
 
+    // Apply text size scaling when project is loaded
+    applyTextSizeScaling(currentProject.textSize);
+
     // Add header (only shown when project is loaded)
     async function handleShowAppInfo() {
       const appInfo = await ContinuityFileManager.loadAppInfo();
@@ -218,11 +237,22 @@ function initializeApp() {
 
       const modal = UIComponents.createProjectSettingsModal(
         state.currentProject,
-        (title: string, description: string) => {
+        (title: string, description: string, textSize: 'small' | 'normal' | 'large') => {
           stateManager.updateProject({
             title,
-            description
+            description,
+            textSize
           });
+          // Apply text size scaling immediately
+          applyTextSizeScaling(textSize);
+          // Update canvas text size with combined scale
+          if (canvasInstance) {
+            const baseScale = getBaseTextScale();
+            const userScale = textSize === 'small' ? 0.8 : textSize === 'large' ? 1.25 : 1.0;
+            const combinedScale = baseScale * userScale;
+            canvasInstance.textSizeMultiplier = combinedScale;
+            canvasInstance.render();
+          }
         }
       );
       appElement.appendChild(modal);
@@ -249,6 +279,18 @@ function initializeApp() {
     // Initialize canvas editor
     const canvas = new TimelineCanvas(canvasContainer);
     canvasInstance = canvas;
+    
+    // Calculate combined text scale (base scale for viewport * user preference)
+    const baseScale = getBaseTextScale();
+    const userTextSize = currentProject.textSize || 'normal';
+    const userScale = userTextSize === 'small' ? 0.8 : userTextSize === 'large' ? 1.25 : 1.0;
+    const combinedScale = baseScale * userScale;
+    
+    // Apply combined text size to canvas
+    canvas.setTextSizeMultiplier(userTextSize);
+    // Override with combined scale that includes viewport adjustment
+    canvas.textSizeMultiplier = combinedScale;
+    
     // Restore previous viewport to avoid any snapping
     if (lastViewport) {
       canvas.setViewport(lastViewport);
