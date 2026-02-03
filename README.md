@@ -37,7 +37,7 @@ Opens automatically at `http://localhost:3000` with hot reload enabled.
 npm run build
 ```
 
-Outputs optimized build to `public/dist/`.
+Outputs optimized build to `dist/`.
 
 ### Type Check
 
@@ -286,21 +286,6 @@ Or manually upload the `dist` directory to Cloudflare Pages, or connect your rep
 - **Storage**: Browser local storage + `.cty` files
 - **Deployment**: Cloudflare Pages
 - **Architecture**: Pure TypeScript with listener-based state management (no frameworks)
-
-## Project Structure
-
-```
-public/
-├── src/
-│   ├── main.ts         # Bootstrap and initialization
-│   ├── types.ts        # Data models (Project, Continuity, Chapter, Arc)
-│   ├── state.ts        # Centralized state manager with listeners
-│   ├── ui.ts           # DOM builders and event handlers
-│   ├── canvas.ts       # Interactive timeline canvas (pan/zoom/drag)
-│   └── fileManager.ts  # Import/export and localStorage management
-├── index.html          # Entry HTML
-└── dist/               # Build output (generated)
-```
 
 ## Development
 
