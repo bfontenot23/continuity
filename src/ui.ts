@@ -2129,6 +2129,8 @@ export class UIComponents {
       endEndpointStyle?: 'dot' | 'arrow' | 'none';
       startChapterId?: string; // For branches
       endChapterId?: string; // For branches
+      startContinuityId?: string; // For branches
+      endContinuityId?: string; // For branches
       content?: string;
       fontSize?: number;
       alignX?: 'left' | 'center' | 'right';
@@ -2744,7 +2746,24 @@ export class UIComponents {
       // Branch editing - description and line style fields
       
       // Check if this is a legacy branch (missing chapter IDs) and show warning
-      if (!data.startChapterId || !data.endChapterId) {
+      // Only show warning if at least one timeline has chapters but we still don't have chapter IDs
+      let shouldShowWarning = !data.startChapterId || !data.endChapterId;
+      
+      if (shouldShowWarning && data.startContinuityId && data.endContinuityId) {
+        // Check if both timelines are legitimately empty
+        const state = stateManager.getState();
+        if (state.currentProject) {
+          const startCont = state.currentProject.continuities.find(c => c.id === data.startContinuityId);
+          const endCont = state.currentProject.continuities.find(c => c.id === data.endContinuityId);
+          
+          // If both timelines have no chapters, undefined IDs are expected → no warning
+          if (startCont && endCont && startCont.chapters.length === 0 && endCont.chapters.length === 0) {
+            shouldShowWarning = false;
+          }
+        }
+      }
+      
+      if (shouldShowWarning) {
         const warningDiv = document.createElement('div');
         warningDiv.style.cssText = 'display: flex; align-items: flex-start; gap: 8px; padding: 12px; background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.3); border-radius: 4px; margin-bottom: 16px;';
         

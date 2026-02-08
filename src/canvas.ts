@@ -2312,7 +2312,14 @@ export class TimelineCanvas {
       const chapterSegmentWidth = this.gridSize * this.zoom;
 
       if (timeline.chapters && timeline.chapters.length > 0) {
-        // Check all insertion points between chapters (not after tail)
+        // Check HEAD position (position 0 - before first chapter)
+        const headX = screenX;
+        const headDistance = Math.sqrt(Math.pow(mouseX - headX, 2) + Math.pow(mouseY - screenY, 2));
+        if (headDistance < hitRadius) {
+          return { timelineId: timeline.id, gridPosition: 0 };
+        }
+
+        // Check insertion points between chapters
         const numInsertionPoints = timeline.chapters.length - 1;
         for (let i = 0; i < numInsertionPoints; i++) {
           const chapter = timeline.chapters[i];
@@ -2324,6 +2331,17 @@ export class TimelineCanvas {
           if (distance < hitRadius) {
             // Return the actual grid position (world coordinates)
             return { timelineId: timeline.id, gridPosition };
+          }
+        }
+
+        // Check TAIL position (position after last chapter)
+        if (timeline.chapters.length > 0) {
+          const lastChapter = timeline.chapters[timeline.chapters.length - 1];
+          const tailGridPosition = lastChapter.x + lastChapter.width;
+          const tailX = screenX + (tailGridPosition * chapterSegmentWidth);
+          const tailDistance = Math.sqrt(Math.pow(mouseX - tailX, 2) + Math.pow(mouseY - screenY, 2));
+          if (tailDistance < hitRadius) {
+            return { timelineId: timeline.id, gridPosition: tailGridPosition };
           }
         }
       }

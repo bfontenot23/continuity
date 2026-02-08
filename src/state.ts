@@ -696,6 +696,22 @@ export class AppStateManager {
   }
 
   /**
+   * Update a line silently (updates state/localStorage but doesn't trigger UI listeners)
+   * Useful for real-time updates that shouldn't cause sidebar re-renders
+   */
+  updateLineSilently(lineId: string, updates: Partial<Line>): void {
+    if (this.state.currentProject && this.state.currentProject.lines) {
+      const line = this.state.currentProject.lines.find(l => l.id === lineId);
+      if (line) {
+        Object.assign(line, updates);
+        this.state.currentProject.modified = Date.now();
+        // Save to localStorage but skip UI listener notifications to prevent sidebar re-renders
+        LocalStorageManager.saveProject(this.state.currentProject);
+      }
+    }
+  }
+
+  /**
    * Remove a line from the project
    * @param lineId - The ID of the line to remove
    */

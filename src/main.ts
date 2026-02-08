@@ -127,6 +127,8 @@ function initializeApp() {
         endEndpointStyle: foundBranch.endEndpointStyle,
         startChapterId: foundBranch.startChapterId,
         endChapterId: foundBranch.endChapterId,
+        startContinuityId: foundBranch.startContinuityId,
+        endContinuityId: foundBranch.endContinuityId,
       },
       null, // Don't need continuity context for branches
       stateManager,
@@ -480,6 +482,8 @@ function initializeApp() {
 
   /**
    * Find the chapter to the LEFT of a grid position (i.e., the chapter whose END is at this position)
+   * For head position (gridPosition <= 0), return the first chapter
+   * For empty timelines, returns undefined (which is valid)
    */
   function findChapterToLeft(continuityId: string, gridPosition: number): string | undefined {
     const state = stateManager.getState();
@@ -488,9 +492,15 @@ function initializeApp() {
     const continuity = state.currentProject.continuities.find(c => c.id === continuityId);
     if (!continuity) return undefined;
 
+    // If timeline has no chapters, it's valid - just return undefined
+    if (continuity.chapters.length === 0) {
+      return undefined;
+    }
+
     // Calculate chapter positions
     const sortedChapters = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
     let currentX = 1; // Start after Head
+    let lastChapterEndPos = currentX;
 
     for (const chapter of sortedChapters) {
       // Calculate width
@@ -508,7 +518,17 @@ function initializeApp() {
         return chapter.id;
       }
 
+      lastChapterEndPos = chapterEndPos;
       currentX += chapterWidth;
+    }
+
+    // If no chapter found at exact position, check if we're at head or tail
+    if (gridPosition <= 0 || gridPosition < 1) {
+      // At head: return first chapter
+      return sortedChapters[0]?.id;
+    } else if (gridPosition >= lastChapterEndPos) {
+      // At tail: return last chapter
+      return sortedChapters[sortedChapters.length - 1]?.id;
     }
 
     return undefined;
@@ -516,6 +536,8 @@ function initializeApp() {
 
   /**
    * Find the chapter to the RIGHT of a grid position (i.e., the chapter whose START is at this position)
+   * For tail position (gridPosition >= last chapter end), return the last chapter
+   * For empty timelines, returns undefined (which is valid)
    */
   function findChapterToRight(continuityId: string, gridPosition: number): string | undefined {
     const state = stateManager.getState();
@@ -524,9 +546,15 @@ function initializeApp() {
     const continuity = state.currentProject.continuities.find(c => c.id === continuityId);
     if (!continuity) return undefined;
 
+    // If timeline has no chapters, it's valid - just return undefined
+    if (continuity.chapters.length === 0) {
+      return undefined;
+    }
+
     // Calculate chapter positions
     const sortedChapters = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
     let currentX = 1; // Start after Head
+    let lastChapterEndPos = currentX;
 
     for (const chapter of sortedChapters) {
       // Calculate width
@@ -542,7 +570,17 @@ function initializeApp() {
         return chapter.id;
       }
 
+      lastChapterEndPos = currentX + chapterWidth;
       currentX += chapterWidth;
+    }
+
+    // If no chapter found at exact position, check if we're at head or tail
+    if (gridPosition <= 0 || gridPosition < 1) {
+      // At head: return first chapter
+      return sortedChapters[0]?.id;
+    } else if (gridPosition >= lastChapterEndPos) {
+      // At tail: return last chapter
+      return sortedChapters[sortedChapters.length - 1]?.id;
     }
 
     return undefined;
