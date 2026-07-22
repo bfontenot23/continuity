@@ -1270,6 +1270,13 @@ export class TimelineCanvas {
           const y = timeline.y * this.zoom + this.offsetY;
           if (x >= left && x + chapter.width * this.gridSize * this.zoom <= right && y - 28 >= top && y + 12 <= bottom) apply(this.selectedChapterIds, chapter.id);
         }
+        for (const timeline of this.timelines) {
+          const lastChapter = timeline.chapters?.[timeline.chapters.length - 1];
+          const x = timeline.x * this.zoom + this.offsetX;
+          const y = timeline.y * this.zoom + this.offsetY;
+          const width = Math.max(this.gridSize * 2 * this.zoom, ((lastChapter?.x ?? 1) + (lastChapter?.width ?? 1)) * this.gridSize * this.zoom + 20);
+          if (x - 6 >= left && x + width + 6 <= right && y - 48 >= top && y + 18 <= bottom) apply(this.selectedTimelineIds, timeline.id);
+        }
         for (const line of this.lines) {
           const x1 = line.gridX1 * this.gridSize * this.zoom + this.offsetX, y1 = line.gridY1 * this.gridSize * this.zoom + this.offsetY;
           const x2 = line.gridX2 * this.gridSize * this.zoom + this.offsetX, y2 = line.gridY2 * this.gridSize * this.zoom + this.offsetY;
