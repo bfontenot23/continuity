@@ -264,6 +264,7 @@ function initializeApp() {
     });
     canvas.setOnAddShape((x: number, y: number) => handleAddShape(x, y));
     canvas.setOnAddImage((x: number, y: number) => promptForImage(x, y));
+    canvas.setOnHistoryGestures(() => stateManager.undo(), () => stateManager.redo());
     canvas.setOnAddChapterToNewTimeline((x: number, y: number) => {
       const continuity = createTimelineAt(x, y);
       if (!continuity) return;

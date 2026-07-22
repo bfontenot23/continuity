@@ -54,6 +54,9 @@ export class TimelineCanvas {
   private touchStartX = 0;
   private touchStartY = 0;
   private touchPanStart: { x: number; y: number; offsetX: number; offsetY: number; distance: number; zoom: number } | null = null;
+  private lastMultiTouchTap: { fingers: number; time: number } | null = null;
+  private onGestureUndo: (() => void) | null = null;
+  private onGestureRedo: (() => void) | null = null;
   
   // Timeline dragging
   private isDraggingTimeline: boolean = false;
@@ -312,6 +315,8 @@ export class TimelineCanvas {
         if (this.dragDelayTimer) { clearTimeout(this.dragDelayTimer); this.dragDelayTimer = null; }
         this.pendingDragTimelineId = null; this.pendingDragChapterId = null; this.pendingDragTextboxId = null;
         this.isDragging = false;
+      } else if (e.touches.length === 3) {
+        this.touchPanStart = null;
       }
     }, { passive: false });
     this.canvas.addEventListener('touchmove', (e) => {
@@ -331,6 +336,17 @@ export class TimelineCanvas {
     }, { passive: false });
     this.canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
+      const fingers = e.changedTouches.length + e.touches.length;
+      if (fingers >= 2) {
+        const now = Date.now();
+        if (this.lastMultiTouchTap?.fingers === fingers && now - this.lastMultiTouchTap.time <= 400) {
+          if (fingers === 2) this.onGestureUndo?.();
+          if (fingers === 3) this.onGestureRedo?.();
+          this.lastMultiTouchTap = null;
+        } else this.lastMultiTouchTap = { fingers, time: now };
+        this.touchPanStart = null;
+        return;
+      }
       if (this.touchPanStart) { this.touchPanStart = null; return; }
       this.canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: this.touchStartX, clientY: this.touchStartY }));
     }, { passive: false });
@@ -1449,6 +1465,11 @@ export class TimelineCanvas {
 
   setOnAddImage(callback: (x: number, y: number) => void): void {
     this.onAddImage = callback;
+  }
+
+  setOnHistoryGestures(undo: () => void, redo: () => void): void {
+    this.onGestureUndo = undo;
+    this.onGestureRedo = redo;
   }
 
   setOnEditTextbox(callback: (textboxId: string) => void): void {
