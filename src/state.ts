@@ -29,6 +29,14 @@ export interface CanvasElements {
   lines: Line[];
 }
 
+export interface CanvasLinePosition {
+  id: string;
+  gridX1: number;
+  gridY1: number;
+  gridX2: number;
+  gridY2: number;
+}
+
 export class AppStateManager {
   private state: AppState;
   private listeners: Set<StateChangeListener> = new Set();
@@ -842,6 +850,22 @@ export class AppStateManager {
     if (!project || (!elements.textboxes.length && !elements.lines.length)) return;
     project.textboxes = [...(project.textboxes || []), ...elements.textboxes];
     project.lines = [...(project.lines || []), ...elements.lines];
+    project.modified = Date.now();
+    this.notifyListeners();
+  }
+
+  updateCanvasLines(lines: CanvasLinePosition[]): void {
+    const project = this.state.currentProject;
+    if (!project || !lines.length) return;
+    const updates = new Map(lines.map(line => [line.id, line]));
+    let changed = false;
+    for (const line of project.lines || []) {
+      const update = updates.get(line.id);
+      if (!update) continue;
+      Object.assign(line, update);
+      changed = true;
+    }
+    if (!changed) return;
     project.modified = Date.now();
     this.notifyListeners();
   }

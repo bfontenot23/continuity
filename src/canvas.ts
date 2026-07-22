@@ -165,10 +165,7 @@ export class TimelineCanvas {
   private pendingDragLineEndpoint: 'start' | 'end' | null = null;
   private lineDragStartX: number = 0;
   private lineDragStartY: number = 0;
-  private lineOriginalX1: number = 0;
-  private lineOriginalY1: number = 0;
-  private lineOriginalX2: number = 0;
-  private lineOriginalY2: number = 0;
+  private selectedLineDragOrigins = new Map<string, { gridX1: number; gridY1: number; gridX2: number; gridY2: number }>();
   
   // Grid settings
   private gridSize: number = 50; // In pixels
@@ -211,6 +208,7 @@ export class TimelineCanvas {
   private onTextboxMoved: ((textboxId: string, x: number, y: number) => void) | null = null;
   private onTextboxResized: ((textboxId: string, width: number, height: number) => void) | null = null;
   private onLineMoved: ((lineId: string, gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
+  private onLinesMoved: ((lines: Line[]) => void) | null = null;
   private getStateChaptersForTimeline: ((timelineId: string) => Chapter[]) | null = null;
   private hoveredInsertZone: { timelineId: string | null; position: 'above' | 'below' } = { timelineId: null, position: 'below' };
 
@@ -650,7 +648,6 @@ export class TimelineCanvas {
           else if (e.metaKey || e.ctrlKey) this.selectedLineIds.delete(clickedLineId);
           else this.selectOnly(this.selectedLineIds, clickedLineId);
           this.render();
-          return;
         }
 
         // Check if clicking on draggable timeline element (title, head, or tail)
@@ -864,10 +861,10 @@ export class TimelineCanvas {
             this.pendingDragLineId = line.id;
             this.lineDragStartX = mouseX;
             this.lineDragStartY = mouseY;
-            this.lineOriginalX1 = line.gridX1;
-            this.lineOriginalY1 = line.gridY1;
-            this.lineOriginalX2 = line.gridX2;
-            this.lineOriginalY2 = line.gridY2;
+            if (!this.selectedLineIds.has(line.id)) this.selectOnly(this.selectedLineIds, line.id);
+            this.selectedLineDragOrigins = new Map(this.lines.filter(candidate => this.selectedLineIds.has(candidate.id)).map(candidate => [candidate.id, {
+              gridX1: candidate.gridX1, gridY1: candidate.gridY1, gridX2: candidate.gridX2, gridY2: candidate.gridY2,
+            }]));
 
             // Delay drag start to allow double-click detection
             this.dragDelayTimer = window.setTimeout(() => {
@@ -885,16 +882,19 @@ export class TimelineCanvas {
                   const deltaX = newMouseX - this.lineDragStartX;
                   const deltaY = newMouseY - this.lineDragStartY;
                   
-                  const draggedLine = this.lines.find(l => l.id === this.draggedLineId);
-                  if (draggedLine) {
+                  if (this.draggedLineId) {
                     const gridSize = this.gridSize;
                     const deltaGridX = Math.round(deltaX / this.zoom / gridSize);
                     const deltaGridY = Math.round(deltaY / this.zoom / gridSize);
                     
-                    draggedLine.gridX1 = this.lineOriginalX1 + deltaGridX;
-                    draggedLine.gridY1 = this.lineOriginalY1 + deltaGridY;
-                    draggedLine.gridX2 = this.lineOriginalX2 + deltaGridX;
-                    draggedLine.gridY2 = this.lineOriginalY2 + deltaGridY;
+                    for (const [id, origin] of this.selectedLineDragOrigins) {
+                      const selected = this.lines.find(candidate => candidate.id === id);
+                      if (!selected) continue;
+                      selected.gridX1 = origin.gridX1 + deltaGridX;
+                      selected.gridY1 = origin.gridY1 + deltaGridY;
+                      selected.gridX2 = origin.gridX2 + deltaGridX;
+                      selected.gridY2 = origin.gridY2 + deltaGridY;
+                    }
                     this.render();
                   }
                 };
@@ -903,11 +903,8 @@ export class TimelineCanvas {
                   document.removeEventListener('mousemove', handleDocumentMouseMove);
                   document.removeEventListener('mouseup', handleDocumentMouseUp);
                   
-                  if (this.isDraggingLine && this.draggedLineId && this.onLineMoved) {
-                    const draggedLine = this.lines.find(l => l.id === this.draggedLineId);
-                    if (draggedLine) {
-                      this.onLineMoved(draggedLine.id, draggedLine.gridX1, draggedLine.gridY1, draggedLine.gridX2, draggedLine.gridY2);
-                    }
+                  if (this.isDraggingLine && this.selectedLineDragOrigins.size) {
+                    this.onLinesMoved?.(this.lines.filter(line => this.selectedLineDragOrigins.has(line.id)).map(line => ({ ...line })));
                   }
                   
                   this.isDraggingLine = false;
@@ -1642,6 +1639,10 @@ export class TimelineCanvas {
 
   setOnLineMoved(callback: (lineId: string, gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void): void {
     this.onLineMoved = callback;
+  }
+
+  setOnLinesMoved(callback: (lines: Line[]) => void): void {
+    this.onLinesMoved = callback;
   }
 
   setTextboxes(textboxes: Textbox[]): void {

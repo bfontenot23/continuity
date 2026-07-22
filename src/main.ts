@@ -339,6 +339,7 @@ function initializeApp() {
     canvas.setOnLineMoved((lineId: string, gridX1: number, gridY1: number, gridX2: number, gridY2: number) => {
       stateManager.updateLine(lineId, { gridX1, gridY1, gridX2, gridY2 });
     });
+    canvas.setOnLinesMoved(lines => stateManager.updateCanvasLines(lines));
 
     canvas.setOnReorderChapter((timelineId: string, chapterId: string, targetIndex: number) => {
       // targetIndex is the position in the sorted chapter array (0-based)
