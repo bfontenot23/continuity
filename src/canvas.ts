@@ -677,7 +677,7 @@ export class TimelineCanvas {
           return;
         }
 
-        const clickedLineId = this.getClickedLine(mouseX, mouseY);
+        const clickedLineId = this.getClickedLine(mouseX, mouseY, true);
         if (clickedLineId) {
           if (e.shiftKey) this.selectedLineIds.add(clickedLineId);
           else if (e.metaKey || e.ctrlKey) this.selectedLineIds.delete(clickedLineId);
@@ -3205,7 +3205,8 @@ export class TimelineCanvas {
     return candidates[index];
   }
 
-  private getClickedLine(mouseX: number, mouseY: number): string | null {
+  private getClickedLine(mouseX: number, mouseY: number, cycle = false): string | null {
+    const candidates: string[] = [];
     for (const line of this.lines) {
       const screenX1 = line.gridX1 * this.gridSize * this.zoom + this.offsetX;
       const screenY1 = line.gridY1 * this.gridSize * this.zoom + this.offsetY;
@@ -3215,11 +3216,16 @@ export class TimelineCanvas {
       // Check distance from point to line segment
       const distance = distanceToLineSegment(mouseX, mouseY, screenX1, screenY1, screenX2, screenY2);
       if (distance <= Math.max(8, (line.lineWidth ?? 2) / 2 + 4)) {
-        return line.id;
+        candidates.push(line.id);
       }
     }
-
-    return null;
+    if (!candidates.length) return null;
+    if (!cycle || candidates.length === 1) return candidates[0];
+    const key = `line:${candidates.join('|')}`;
+    const sameSpot = this.selectionCycle && this.selectionCycle.key === key && Math.abs(this.selectionCycle.x - mouseX) < 6 && Math.abs(this.selectionCycle.y - mouseY) < 6;
+    const index = sameSpot ? (this.selectionCycle!.index + 1) % candidates.length : 0;
+    this.selectionCycle = { key, x: mouseX, y: mouseY, index };
+    return candidates[index];
   }
 
   private getClickedLineEndpoint(mouseX: number, mouseY: number): { lineId: string; endpoint: 'start' | 'end' } | null {
