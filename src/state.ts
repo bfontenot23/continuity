@@ -234,6 +234,20 @@ export class AppStateManager {
     }
   }
 
+  /** Insert an ordered chapter group as one undoable operation. */
+  insertChapters(continuityId: string, chapters: Chapter[], targetIndex: number): void {
+    const continuity = this.state.currentProject?.continuities.find(candidate => candidate.id === continuityId);
+    if (!continuity || !chapters.length) return;
+    const sorted = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
+    const index = Math.max(0, Math.min(sorted.length, targetIndex));
+    sorted.splice(index, 0, ...chapters);
+    sorted.forEach((chapter, position) => { chapter.timestamp = position + 1; });
+    continuity.chapters = sorted;
+    this.recalculateBranchPositions(continuity);
+    this.state.currentProject!.modified = Date.now();
+    this.notifyListeners();
+  }
+
   updateChapter(continuityId: string, chapterId: string, updates: Partial<Chapter>): void {
     if (this.state.currentProject) {
       const continuity = this.state.currentProject.continuities.find(c => c.id === continuityId);

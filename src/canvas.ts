@@ -3,7 +3,7 @@
  * Handles dragging, zooming, and visual rendering of timelines
  */
 
-import { Arc, Branch, Chapter, Line, Textbox } from './types';
+import { Arc, Branch, Chapter, Line, Textbox, generateId } from './types';
 import { getChapterPositions, sortChapters } from './timelineLayout';
 import { MenuSystem } from './menuSystem';
 import { groupTimelineChaptersByArc } from './canvasArcGroups';
@@ -28,6 +28,7 @@ export interface TimelineChapter {
   x: number; // Position on the timeline (0-based gridspace)
   width: number; // Width in gridspaces
   arcId?: string; // Arc this chapter belongs to
+  source?: Chapter;
 }
 
 export interface CanvasSelectionDeletion {
@@ -133,6 +134,8 @@ export class TimelineCanvas {
   private textboxes: Textbox[] = [];
   private selectedTextboxIds = new Set<string>();
   private elementClipboard: CanvasElements = { textboxes: [], lines: [] };
+  private chapterClipboard: Chapter[] = [];
+  private chapterPasteMode = false;
   private textboxOverlayContainer: HTMLElement | null = null;
   private textboxRenderer: TextboxOverlayRenderer;
   private isDraggingTextbox: boolean = false;
@@ -194,6 +197,7 @@ export class TimelineCanvas {
   private onAddImage: ((x: number, y: number) => void) | null = null;
   private onDeleteSelection: ((selection: CanvasSelectionDeletion) => void) | null = null;
   private onPasteSelection: ((elements: CanvasElements) => void) | null = null;
+  private onPasteChapters: ((chapters: Chapter[], timelineId: string | null, position: number, point?: { x: number; y: number }) => void) | null = null;
   private imageCache = new Map<string, HTMLImageElement>();
   private onAddLine: ((gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
@@ -291,6 +295,7 @@ export class TimelineCanvas {
       if (e.key !== 'Escape') return;
       if (!this.insertionMode && !this.branchInsertionMode && !this.lineInsertionMode) return;
       this.insertionMode = false;
+      this.chapterPasteMode = false;
       this.branchInsertionMode = false;
       this.lineInsertionMode = false;
       this.branchFirstPoint = null;
@@ -317,6 +322,14 @@ export class TimelineCanvas {
       }
       if (modifier && e.key.toLowerCase() === 'c' && this.hasSelection()) {
         e.preventDefault();
+        const chapterTimelines = this.timelines.filter(timeline => (timeline.chapters ?? []).some(chapter => this.selectedChapterIds.has(chapter.id)));
+        if (chapterTimelines.length > 1) {
+          alert('Chapters can only be copied when they are on the same timeline.');
+          return;
+        }
+        this.chapterClipboard = chapterTimelines.length === 1
+          ? (chapterTimelines[0].chapters ?? []).filter(chapter => this.selectedChapterIds.has(chapter.id)).map(chapter => ({ ...chapter.source!, id: generateId() }))
+          : [];
         this.elementClipboard = {
           textboxes: this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })),
           lines: this.lines.filter(line => this.selectedLineIds.has(line.id)).map(line => ({ ...line })),
@@ -324,16 +337,26 @@ export class TimelineCanvas {
         return;
       }
       if (modifier && e.key.toLowerCase() === 'x' && this.hasSelection()) {
-        const hasCopyableElements = this.selectedTextboxIds.size > 0 || this.selectedLineIds.size > 0;
+        const chapterTimelines = this.timelines.filter(timeline => (timeline.chapters ?? []).some(chapter => this.selectedChapterIds.has(chapter.id)));
+        if (chapterTimelines.length > 1) { alert('Chapters can only be cut when they are on the same timeline.'); return; }
+        const hasCopyableElements = this.selectedTextboxIds.size > 0 || this.selectedLineIds.size > 0 || this.selectedChapterIds.size > 0;
         if (!hasCopyableElements) return;
         e.preventDefault();
+        this.chapterClipboard = chapterTimelines.length === 1
+          ? (chapterTimelines[0].chapters ?? []).filter(chapter => this.selectedChapterIds.has(chapter.id)).map(chapter => ({ ...chapter.source!, id: generateId() }))
+          : [];
         this.elementClipboard = {
           textboxes: this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })),
           lines: this.lines.filter(line => this.selectedLineIds.has(line.id)).map(line => ({ ...line })),
         };
-        this.onDeleteSelection?.({ chapterIds: [], branchIds: [], textboxIds: [...this.selectedTextboxIds], lineIds: [...this.selectedLineIds] });
-        this.selectedTextboxIds.clear();
-        this.selectedLineIds.clear();
+        this.onDeleteSelection?.({ chapterIds: [...this.selectedChapterIds], branchIds: [...this.selectedBranchIds], textboxIds: [...this.selectedTextboxIds], lineIds: [...this.selectedLineIds] });
+        this.clearSelection();
+        this.render(); return;
+      }
+      if (modifier && e.key.toLowerCase() === 'v' && this.chapterClipboard.length) {
+        e.preventDefault();
+        this.chapterPasteMode = true;
+        this.insertionMode = true;
         this.render(); return;
       }
       if (modifier && e.key.toLowerCase() === 'v' && (this.elementClipboard.textboxes.length || this.elementClipboard.lines.length)) {
@@ -490,17 +513,22 @@ export class TimelineCanvas {
           const clickResult = this.getClickedInsertionPoint(mouseX, mouseY);
           if (clickResult) {
             // Valid insertion point clicked
-            if (this.onAddChapter) {
+            if (this.chapterPasteMode) {
+              this.onPasteChapters?.(this.chapterClipboard.map(chapter => ({ ...chapter, id: generateId() })), clickResult.timelineId, clickResult.position);
+            } else if (this.onAddChapter) {
               this.onAddChapter(clickResult.timelineId, clickResult.position);
             }
             this.insertionMode = false;
             this.render();
           } else {
             const point = this.getValidTimelineCreationPoint(mouseX, mouseY);
-            if (point && this.onAddChapterToNewTimeline) {
+            if (point && this.chapterPasteMode) {
+              this.onPasteChapters?.(this.chapterClipboard.map(chapter => ({ ...chapter, id: generateId() })), null, 0, point);
+            } else if (point && this.onAddChapterToNewTimeline) {
               this.onAddChapterToNewTimeline(point.x, point.y);
             }
             this.insertionMode = false;
+            this.chapterPasteMode = false;
             this.render();
           }
           return;
@@ -1646,6 +1674,10 @@ export class TimelineCanvas {
     this.onPasteSelection = callback;
   }
 
+  setOnPasteChapters(callback: (chapters: Chapter[], timelineId: string | null, position: number, point?: { x: number; y: number }) => void): void {
+    this.onPasteChapters = callback;
+  }
+
   setOnEditTextbox(callback: (textboxId: string) => void): void {
     this.onEditTextbox = callback;
   }
@@ -1923,6 +1955,7 @@ export class TimelineCanvas {
         x: position.x,
         width: position.width,
         arcId: chapter.arcId
+        ,source: chapter
       };
       visualChapters.push(visualChapter);
     });

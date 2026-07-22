@@ -269,6 +269,13 @@ function initializeApp() {
     canvas.setOnHistoryGestures(() => stateManager.undo(), () => stateManager.redo());
     canvas.setOnSelectionDelete(selection => stateManager.deleteCanvasSelection(selection));
     canvas.setOnSelectionPaste(elements => stateManager.addCanvasElements(elements));
+    canvas.setOnPasteChapters((chapters, timelineId, position, point) => {
+      if (timelineId) stateManager.insertChapters(timelineId, chapters, position);
+      else if (point) {
+        const continuity = createTimelineAt(point.x, point.y);
+        if (continuity) stateManager.insertChapters(continuity.id, chapters, 0);
+      }
+    });
     canvas.setOnAddChapterToNewTimeline((x: number, y: number) => {
       const continuity = createTimelineAt(x, y);
       if (!continuity) return;
