@@ -19,14 +19,16 @@ export function renderLines(
   lines: readonly Line[],
   viewport: LineRendererViewport,
   insertion: { enabled: boolean; firstPoint: GridPoint | null; hoveredPoint: GridPoint | null },
+  selectedLineIds: ReadonlySet<string> = new Set(),
 ): void {
   for (const line of lines) {
     const startX = line.gridX1 * viewport.gridSize * viewport.zoom + viewport.offsetX;
     const startY = line.gridY1 * viewport.gridSize * viewport.zoom + viewport.offsetY;
     const endX = line.gridX2 * viewport.gridSize * viewport.zoom + viewport.offsetX;
     const endY = line.gridY2 * viewport.gridSize * viewport.zoom + viewport.offsetY;
-    ctx.strokeStyle = '#666666';
-    ctx.lineWidth = Math.max(1, line.lineWidth ?? 2);
+    const selected = selectedLineIds.has(line.id);
+    ctx.strokeStyle = selected ? '#1976d2' : '#666666';
+    ctx.lineWidth = Math.max(1, line.lineWidth ?? 2) + (selected ? 2 : 0);
     ctx.setLineDash(line.lineStyle === 'dashed' ? [5, 5] : []);
     ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke();
     ctx.setLineDash([]);

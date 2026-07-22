@@ -12,6 +12,7 @@
 - Added initial selection support for chapters and floating elements, including multi-select, copy/cut/paste/delete, and grouped movement for textboxes, shapes, and images.
 - Added Shift-drag marquee selection for chapters and floating elements.
 - Added direct branch selection with modifier-key multi-select and a blue selection highlight.
+- Expanded canvas selection feedback to timelines and lines, with Ctrl/Cmd+A support across canvas elements and Ctrl/Cmd-drag removal from chapter, floating-element, and line marquee selections.
 - Branch and chapter placement on an empty, valid grid location can create a new timeline automatically.
 
 ## Improvements
