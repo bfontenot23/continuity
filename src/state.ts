@@ -4,6 +4,7 @@
 
 import { Project, Continuity, Chapter, Arc, Branch, Textbox, Line } from './types';
 import { LocalStorageManager } from './fileManager';
+import { getChapterPositions } from './timelineLayout';
 
 type StateChangeListener = (state: AppState) => void;
 
@@ -37,6 +38,11 @@ export class AppStateManager {
 
   setProject(project: Project): void {
     this.state.currentProject = project;
+    this.notifyListeners();
+  }
+
+  /** Publish the current state after an interaction that does not mutate it directly. */
+  refresh(): void {
     this.notifyListeners();
   }
 
@@ -93,6 +99,16 @@ export class AppStateManager {
         this.notifyListeners();
       }
     }
+  }
+
+  /** Persist a focused text edit without rebuilding the application UI. */
+  updateContinuitySilently(continuityId: string, updates: Partial<Continuity>): void {
+    const continuity = this.state.currentProject?.continuities.find(c => c.id === continuityId);
+    if (!continuity) return;
+
+    Object.assign(continuity, updates);
+    this.state.currentProject!.modified = Date.now();
+    this.persistProject();
   }
 
   removeContinuity(continuityId: string): void {
@@ -175,7 +191,7 @@ export class AppStateManager {
           Object.assign(chapter, updates);
           // If gridLength or timestamp changed, recalculate branch positions on this timeline
           // timestamp changes mean chapter reordering, which affects branch positions
-          if (('gridLength' in updates || 'timestamp' in updates) && continuity.branches) {
+          if (('gridLength' in updates || 'timestamp' in updates || 'title' in updates) && continuity.branches) {
             this.recalculateBranchPositions(continuity);
           }
           this.state.currentProject.modified = Date.now();
@@ -183,6 +199,20 @@ export class AppStateManager {
         }
       }
     }
+  }
+
+  /** Persist a focused text edit without rebuilding the application UI. */
+  updateChapterSilently(continuityId: string, chapterId: string, updates: Partial<Chapter>): void {
+    const continuity = this.state.currentProject?.continuities.find(c => c.id === continuityId);
+    const chapter = continuity?.chapters.find(ch => ch.id === chapterId);
+    if (!continuity || !chapter) return;
+
+    Object.assign(chapter, updates);
+    if ('gridLength' in updates || 'timestamp' in updates || 'title' in updates) {
+      this.recalculateBranchPositions(continuity);
+    }
+    this.state.currentProject!.modified = Date.now();
+    this.persistProject();
   }
 
   /**
@@ -230,29 +260,7 @@ export class AppStateManager {
   private recalculateBranchPositions(continuity: Continuity): void {
     if (!this.state.currentProject) return;
 
-    // Helper to calculate chapter positions
-    const getChapterPositions = (chapters: Chapter[]) => {
-      const positions = new Map<string, { x: number; width: number }>();
-      let currentX = 1; // Start after Head (x=0, width=1)
-      const sortedChapters = [...chapters].sort((a, b) => a.timestamp - b.timestamp);
-      
-      sortedChapters.forEach((chapter) => {
-        let chapterWidth: number;
-        if (chapter.gridLength && chapter.gridLength > 0) {
-          chapterWidth = chapter.gridLength;
-        } else {
-          chapterWidth = Math.max(1, Math.ceil(chapter.title.length / 5));
-        }
-        
-        positions.set(chapter.id, { x: currentX, width: chapterWidth });
-        currentX += chapterWidth;
-      });
-      
-      return { positions, tailPosition: currentX };
-    };
-
-    // Get positions for this continuity
-    const { positions } = getChapterPositions(continuity.chapters);
+    const positions = getChapterPositions(continuity.chapters);
 
     // Update ALL branches in ALL continuities that reference this continuity
     this.state.currentProject.continuities.forEach(cont => {
@@ -596,6 +604,26 @@ export class AppStateManager {
     }
   }
 
+  /** Persist a focused branch-text edit without rebuilding the application UI. */
+  updateBranchSilently(branchId: string, updates: Partial<Branch>): void {
+    if (!this.state.currentProject) return;
+
+    let changed = false;
+    for (const continuity of this.state.currentProject.continuities) {
+      for (const branch of continuity.branches ?? []) {
+        if (branch.id === branchId) {
+          Object.assign(branch, updates);
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      this.state.currentProject.modified = Date.now();
+      this.persistProject();
+    }
+  }
+
   /**
    * Remove a branch from all continuities
    * @param branchId - The ID of the branch to remove
@@ -647,6 +675,16 @@ export class AppStateManager {
         this.notifyListeners();
       }
     }
+  }
+
+  /** Persist a focused text edit without rebuilding the application UI. */
+  updateTextboxSilently(textboxId: string, updates: Partial<Textbox>): void {
+    const textbox = this.state.currentProject?.textboxes?.find(t => t.id === textboxId);
+    if (!textbox) return;
+
+    Object.assign(textbox, updates);
+    this.state.currentProject!.modified = Date.now();
+    this.persistProject();
   }
 
   /**
@@ -732,10 +770,13 @@ export class AppStateManager {
   }
 
   private notifyListeners(): void {
-    // Auto-save to local storage
+    this.persistProject();
+    this.listeners.forEach(listener => listener(this.getState()));
+  }
+
+  private persistProject(): void {
     if (this.state.currentProject) {
       LocalStorageManager.saveProject(this.state.currentProject);
     }
-    this.listeners.forEach(listener => listener(this.getState()));
   }
 }

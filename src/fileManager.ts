@@ -1,4 +1,5 @@
 import { Project } from './types';
+import { migrateProject } from './projectMigration';
 
 /**
  * File system operations for .cty (continuity) files
@@ -166,30 +167,7 @@ export class ContinuityFileManager {
    * Adds missing properties that didn't exist in earlier versions
    */
   static migrateProject(project: Project): void {
-    // Ensure all continuities have branches array
-    if (project.continuities && Array.isArray(project.continuities)) {
-      project.continuities.forEach((continuity: any) => {
-        if (!continuity.branches) {
-          continuity.branches = [];
-        }
-
-        // Backfill branch defaults for older files
-        continuity.branches.forEach((branch: any) => {
-          if (!branch.lineStyle) branch.lineStyle = 'solid';
-          if (!branch.startEndpointStyle) branch.startEndpointStyle = 'dot';
-          if (!branch.endEndpointStyle) branch.endEndpointStyle = 'dot';
-        });
-      });
-    }
-
-    // Backfill line defaults for older projects
-    if (project.lines && Array.isArray(project.lines)) {
-      project.lines.forEach((line: any) => {
-        if (!line.lineStyle) line.lineStyle = 'solid';
-        if (!line.startEndpointStyle) line.startEndpointStyle = 'dot';
-        if (!line.endEndpointStyle) line.endEndpointStyle = 'dot';
-      });
-    }
+    migrateProject(project);
   }
 
   /**

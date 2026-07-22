@@ -1,8 +1,12 @@
-import { createProject, createContinuity, createChapter, createBranch, createTextbox, createLine } from './types';
+import { createProject, createContinuity, createChapter, createBranch, createTextbox, createLine, Continuity } from './types';
 import { ContinuityFileManager, LocalStorageManager } from './fileManager';
 import { AppStateManager } from './state';
 import { UIComponents } from './ui';
 import { TimelineCanvas } from './canvas';
+import { findChapterToLeft, findChapterToRight } from './timelineLayout';
+
+type SidebarType = 'timeline' | 'chapter' | 'branch' | 'textbox' | 'line';
+type SidebarData = Parameters<typeof UIComponents.createEditSidebar>[1];
 
 /**
  * Main application entry point
@@ -10,7 +14,7 @@ import { TimelineCanvas } from './canvas';
 
 const stateManager = new AppStateManager();
 let currentEditSidebar: HTMLElement | null = null;
-let preservedSidebarState: { type: 'timeline' | 'chapter' | 'branch' | 'textbox' | 'line'; id: string } | null = null;
+let preservedSidebarState: { type: SidebarType; id: string } | null = null;
 
 function initializeApp() {
   const app = document.getElementById('app');
@@ -36,133 +40,89 @@ function initializeApp() {
     app?.classList.remove('app-has-sidebar');
   }
 
-  function showTimelineEditSidebar(timelineId: string, autoFocus: boolean = false) {
+  function openEditSidebar(
+    type: SidebarType,
+    data: SidebarData,
+    continuity: Continuity | null,
+    autoFocus: boolean
+  ): void {
     closeSidebar();
-    
+    if (!app) return;
+
+    currentEditSidebar = UIComponents.createEditSidebar(
+      type, data, continuity, stateManager, closeSidebar, autoFocus,
+      () => canvasInstance?.refresh(),
+      () => refreshCanvasForSidebar(type, continuity)
+    );
+    app.appendChild(currentEditSidebar);
+    app.classList.add('app-has-sidebar');
+    preservedSidebarState = { type, id: data.id };
+  }
+
+  function refreshCanvasForSidebar(type: SidebarType, continuity: Continuity | null): void {
+    if (!canvasInstance) return;
+
+    if (type === 'timeline' && continuity) {
+      canvasInstance.updateTimelineName(continuity.id, continuity.name);
+    } else if (type === 'chapter' && continuity) {
+      canvasInstance.updateTimelineChaptersWithArcs(continuity.id, continuity.chapters, continuity.arcs);
+    } else {
+      canvasInstance.refresh();
+    }
+  }
+
+  function showTimelineEditSidebar(timelineId: string, autoFocus: boolean = false) {
     const state = stateManager.getState();
-    const appElement = app;
-    if (!state.currentProject || !appElement) return;
+    if (!state.currentProject) return;
 
     const continuity = state.currentProject.continuities.find(c => c.id === timelineId);
     if (!continuity) return;
 
-    currentEditSidebar = UIComponents.createEditSidebar(
-      'timeline',
-      { id: timelineId, name: continuity.name },
-      continuity,
-      stateManager,
-      closeSidebar,
-      autoFocus
-    );
-    
-    appElement.appendChild(currentEditSidebar);
-    appElement.classList.add('app-has-sidebar');
-    preservedSidebarState = { type: 'timeline', id: timelineId };
+    openEditSidebar('timeline', { id: timelineId, name: continuity.name }, continuity, autoFocus);
   }
 
   function showChapterEditSidebar(chapterId: string, autoFocus: boolean = false) {
-    closeSidebar();
-    
     const state = stateManager.getState();
-    const appElement = app;
-    if (!state.currentProject || !appElement) return;
+    if (!state.currentProject) return;
 
-    // Find the continuity and chapter
-    let foundContinuity: any = null;
-    let foundChapter: any = null;
+    const continuity = state.currentProject.continuities.find(c => c.chapters.some(ch => ch.id === chapterId));
+    const chapter = continuity?.chapters.find(ch => ch.id === chapterId);
+    if (!continuity || !chapter) return;
 
-    for (const continuity of state.currentProject.continuities) {
-      const chapter = continuity.chapters.find(ch => ch.id === chapterId);
-      if (chapter) {
-        foundContinuity = continuity;
-        foundChapter = chapter;
-        break;
-      }
-    }
-
-    if (!foundChapter || !foundContinuity) return;
-
-    currentEditSidebar = UIComponents.createEditSidebar(
-      'chapter',
-      { id: chapterId, title: foundChapter.title, description: foundChapter.description, gridLength: foundChapter.gridLength, arcId: foundChapter.arcId },
-      foundContinuity,
-      stateManager,
-      closeSidebar,
-      autoFocus
-    );
-    
-    appElement.appendChild(currentEditSidebar);
-    appElement.classList.add('app-has-sidebar');
-    preservedSidebarState = { type: 'chapter', id: chapterId };
+    openEditSidebar('chapter', {
+      id: chapterId, title: chapter.title, description: chapter.description,
+      gridLength: chapter.gridLength, arcId: chapter.arcId,
+    }, continuity, autoFocus);
   }
 
   function showBranchEditSidebar(branchId: string, autoFocus: boolean = false) {
-    closeSidebar();
-    
     const state = stateManager.getState();
-    const appElement = app;
-    if (!state.currentProject || !appElement) return;
+    if (!state.currentProject) return;
 
-    // Find the branch in any continuity
-    let foundBranch: any = null;
+    const branch = state.currentProject.continuities
+      .flatMap(continuity => continuity.branches ?? [])
+      .find(candidate => candidate.id === branchId);
+    if (!branch) return;
 
-    for (const continuity of state.currentProject.continuities) {
-      if (!continuity.branches) continue; // Skip if no branches array
-      const branch = continuity.branches.find(b => b.id === branchId);
-      if (branch) {
-        foundBranch = branch;
-        break;
-      }
-    }
-
-    if (!foundBranch) return;
-
-    currentEditSidebar = UIComponents.createEditSidebar(
-      'branch',
-      {
-        id: branchId,
-        description: foundBranch.description,
-        lineStyle: foundBranch.lineStyle,
-        startEndpointStyle: foundBranch.startEndpointStyle,
-        endEndpointStyle: foundBranch.endEndpointStyle,
-        startChapterId: foundBranch.startChapterId,
-        endChapterId: foundBranch.endChapterId,
-        startContinuityId: foundBranch.startContinuityId,
-        endContinuityId: foundBranch.endContinuityId,
-      },
-      null, // Don't need continuity context for branches
-      stateManager,
-      closeSidebar,
-      autoFocus
-    );
-    
-    appElement.appendChild(currentEditSidebar);
-    appElement.classList.add('app-has-sidebar');
-    preservedSidebarState = { type: 'branch', id: branchId };
+    openEditSidebar('branch', {
+      id: branchId, description: branch.description, lineStyle: branch.lineStyle,
+      startEndpointStyle: branch.startEndpointStyle, endEndpointStyle: branch.endEndpointStyle,
+      startChapterId: branch.startChapterId, endChapterId: branch.endChapterId,
+      startContinuityId: branch.startContinuityId, endContinuityId: branch.endContinuityId,
+    }, null, autoFocus);
   }
 
   function showTextboxEditSidebar(textboxId: string, autoFocus: boolean = false) {
-    closeSidebar();
-    
     const state = stateManager.getState();
-    const appElement = app;
-    if (!state.currentProject || !appElement) return;
+    if (!state.currentProject) return;
 
     const textbox = state.currentProject.textboxes?.find(t => t.id === textboxId);
     if (!textbox) return;
 
-    currentEditSidebar = UIComponents.createEditSidebar(
-      'textbox',
-      { id: textboxId, content: textbox.content, fontSize: textbox.fontSize, alignX: textbox.alignX, alignY: textbox.alignY },
-      null,
-      stateManager,
-      closeSidebar,
-      autoFocus
-    );
-    
-    appElement.appendChild(currentEditSidebar);
-    appElement.classList.add('app-has-sidebar');
-    preservedSidebarState = { type: 'textbox', id: textboxId };
+    openEditSidebar('textbox', {
+      id: textboxId, content: textbox.content, fontSize: textbox.fontSize,
+      alignX: textbox.alignX, alignY: textbox.alignY,
+    }, null, autoFocus);
   }
 
   let canvasInstance: TimelineCanvas | null = null;
@@ -314,7 +274,13 @@ function initializeApp() {
     });
 
     canvas.setOnBackgroundClick(() => {
+      const hadOpenSidebar = currentEditSidebar !== null;
       closeSidebar();
+      if (hadOpenSidebar) {
+        // Focused fields save silently while typing; publish them when the canvas
+        // closes the editor so the new canvas reflects the final state.
+        stateManager.refresh();
+      }
     });
 
     canvas.setOnAddTextbox((x: number, y: number) => {
@@ -463,8 +429,10 @@ function initializeApp() {
     // Find which chapters these positions correspond to:
     // - Start point: anchor to chapter on the LEFT (whose end is at this position)
     // - End point: anchor to chapter on the RIGHT (whose start is at this position)
-    const startChapterId = findChapterToLeft(startTimelineId, startPosition);
-    const endChapterId = findChapterToRight(endTimelineId, endPosition);
+    const startContinuity = state.currentProject.continuities.find(c => c.id === startTimelineId);
+    const endContinuity = state.currentProject.continuities.find(c => c.id === endTimelineId);
+    const startChapterId = startContinuity ? findChapterToLeft(startContinuity.chapters, startPosition) : undefined;
+    const endChapterId = endContinuity ? findChapterToRight(endContinuity.chapters, endPosition) : undefined;
 
     // Create branch with chapter associations
     const branch = createBranch(startTimelineId, startPosition, endTimelineId, endPosition);
@@ -478,112 +446,6 @@ function initializeApp() {
     setTimeout(() => {
       showBranchEditSidebar(branch.id, true);
     }, 0);
-  }
-
-  /**
-   * Find the chapter to the LEFT of a grid position (i.e., the chapter whose END is at this position)
-   * For head position (gridPosition <= 0), return the first chapter
-   * For empty timelines, returns undefined (which is valid)
-   */
-  function findChapterToLeft(continuityId: string, gridPosition: number): string | undefined {
-    const state = stateManager.getState();
-    if (!state.currentProject) return undefined;
-
-    const continuity = state.currentProject.continuities.find(c => c.id === continuityId);
-    if (!continuity) return undefined;
-
-    // If timeline has no chapters, it's valid - just return undefined
-    if (continuity.chapters.length === 0) {
-      return undefined;
-    }
-
-    // Calculate chapter positions
-    const sortedChapters = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
-    let currentX = 1; // Start after Head
-    let lastChapterEndPos = currentX;
-
-    for (const chapter of sortedChapters) {
-      // Calculate width
-      let chapterWidth: number;
-      if (chapter.gridLength && chapter.gridLength > 0) {
-        chapterWidth = chapter.gridLength;
-      } else {
-        chapterWidth = Math.max(1, Math.ceil(chapter.title.length / 5));
-      }
-
-      const chapterEndPos = currentX + chapterWidth;
-      
-      // Check if position matches this chapter's end
-      if (Math.abs(gridPosition - chapterEndPos) < 0.01) {
-        return chapter.id;
-      }
-
-      lastChapterEndPos = chapterEndPos;
-      currentX += chapterWidth;
-    }
-
-    // If no chapter found at exact position, check if we're at head or tail
-    if (gridPosition <= 0 || gridPosition < 1) {
-      // At head: return first chapter
-      return sortedChapters[0]?.id;
-    } else if (gridPosition >= lastChapterEndPos) {
-      // At tail: return last chapter
-      return sortedChapters[sortedChapters.length - 1]?.id;
-    }
-
-    return undefined;
-  }
-
-  /**
-   * Find the chapter to the RIGHT of a grid position (i.e., the chapter whose START is at this position)
-   * For tail position (gridPosition >= last chapter end), return the last chapter
-   * For empty timelines, returns undefined (which is valid)
-   */
-  function findChapterToRight(continuityId: string, gridPosition: number): string | undefined {
-    const state = stateManager.getState();
-    if (!state.currentProject) return undefined;
-
-    const continuity = state.currentProject.continuities.find(c => c.id === continuityId);
-    if (!continuity) return undefined;
-
-    // If timeline has no chapters, it's valid - just return undefined
-    if (continuity.chapters.length === 0) {
-      return undefined;
-    }
-
-    // Calculate chapter positions
-    const sortedChapters = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
-    let currentX = 1; // Start after Head
-    let lastChapterEndPos = currentX;
-
-    for (const chapter of sortedChapters) {
-      // Calculate width
-      let chapterWidth: number;
-      if (chapter.gridLength && chapter.gridLength > 0) {
-        chapterWidth = chapter.gridLength;
-      } else {
-        chapterWidth = Math.max(1, Math.ceil(chapter.title.length / 5));
-      }
-
-      // Check if position matches this chapter's start
-      if (Math.abs(gridPosition - currentX) < 0.01) {
-        return chapter.id;
-      }
-
-      lastChapterEndPos = currentX + chapterWidth;
-      currentX += chapterWidth;
-    }
-
-    // If no chapter found at exact position, check if we're at head or tail
-    if (gridPosition <= 0 || gridPosition < 1) {
-      // At head: return first chapter
-      return sortedChapters[0]?.id;
-    } else if (gridPosition >= lastChapterEndPos) {
-      // At tail: return last chapter
-      return sortedChapters[sortedChapters.length - 1]?.id;
-    }
-
-    return undefined;
   }
 
   function handleAddTextbox(x: number, y: number) {
@@ -617,32 +479,16 @@ function initializeApp() {
   }
 
   function showLineEditSidebar(lineId: string, autoFocus: boolean = false) {
-    closeSidebar();
-    
     const state = stateManager.getState();
-    const appElement = app;
-    if (!state.currentProject || !appElement) return;
+    if (!state.currentProject) return;
 
     const line = state.currentProject.lines?.find(l => l.id === lineId);
     if (!line) return;
 
-    currentEditSidebar = UIComponents.createEditSidebar(
-      'line',
-      {
-        id: lineId,
-        lineStyle: line.lineStyle,
-        startEndpointStyle: line.startEndpointStyle,
-        endEndpointStyle: line.endEndpointStyle,
-      },
-      null,
-      stateManager,
-      closeSidebar,
-      autoFocus
-    );
-    
-    appElement.appendChild(currentEditSidebar);
-    appElement.classList.add('app-has-sidebar');
-    preservedSidebarState = { type: 'line', id: lineId };
+    openEditSidebar('line', {
+      id: lineId, lineStyle: line.lineStyle,
+      startEndpointStyle: line.startEndpointStyle, endEndpointStyle: line.endEndpointStyle,
+    }, null, autoFocus);
   }
 
   async function handleExport() {
@@ -702,7 +548,7 @@ function initializeApp() {
 
   // Try to load a project from local storage (only if not in development mode)
   // To start fresh during development, set DISABLE_AUTO_LOAD to true or clear localStorage
-  const isDevelopment = (import.meta as any).env?.DEV;
+  const isDevelopment = (import.meta as { env?: { DEV?: boolean } }).env?.DEV;
   if (!isDevelopment) {
     const projectIds = LocalStorageManager.listProjects();
     if (projectIds.length > 0) {
