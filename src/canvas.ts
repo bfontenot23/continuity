@@ -74,6 +74,8 @@ export class TimelineCanvas {
   private draggedChapterId: string | null = null;
   private draggedChapterTimelineId: string | null = null;
   private selectedChapterIds = new Set<string>();
+  private selectedBranchIds = new Set<string>();
+  private selectedLineIds = new Set<string>();
   private selectionRect: { startX: number; startY: number; endX: number; endY: number } | null = null;
   private chapterDragStartX: number = 0;
   private chapterOriginalX: number = 0;
@@ -592,6 +594,24 @@ export class TimelineCanvas {
             this.onEditLine(clickedLineId);
             return;
           }
+        }
+
+        const clickedBranchId = this.getClickedBranch(mouseX, mouseY);
+        if (clickedBranchId) {
+          if (e.shiftKey) this.selectedBranchIds.add(clickedBranchId);
+          else if (e.metaKey || e.ctrlKey) this.selectedBranchIds.delete(clickedBranchId);
+          else this.selectedBranchIds = new Set([clickedBranchId]);
+          this.render();
+          return;
+        }
+
+        const clickedLineId = this.getClickedLine(mouseX, mouseY);
+        if (clickedLineId) {
+          if (e.shiftKey) this.selectedLineIds.add(clickedLineId);
+          else if (e.metaKey || e.ctrlKey) this.selectedLineIds.delete(clickedLineId);
+          else this.selectedLineIds = new Set([clickedLineId]);
+          this.render();
+          return;
         }
 
         // Check if clicking on draggable timeline element (title, head, or tail)
@@ -2531,7 +2551,7 @@ export class TimelineCanvas {
       const endScreenY = endWorldY * this.zoom + this.offsetY;
       
       // Draw curved line using S-curve (cubic bezier)
-      this.ctx.strokeStyle = '#000000';
+      this.ctx.strokeStyle = this.selectedBranchIds.has(branch.id) ? '#1976d2' : '#000000';
       this.ctx.lineWidth = Math.max(1, branch.lineWidth ?? 3);
       
       // Apply line style (default solid)
