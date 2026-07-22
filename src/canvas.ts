@@ -64,6 +64,7 @@ export class TimelineCanvas {
   private lastClickTime = 0;
   private lastClickX = 0;
   private lastClickY = 0;
+  private selectionCycle: { key: string; x: number; y: number; index: number } | null = null;
   private touchStartX = 0;
   private touchStartY = 0;
   private touchPanStart: { x: number; y: number; offsetX: number; offsetY: number; distance: number; zoom: number } | null = null;
@@ -762,7 +763,7 @@ export class TimelineCanvas {
         }
 
         // Check if clicking on textbox or its resize handle
-        const textboxClickResult = this.getClickedTextboxElement(mouseX, mouseY);
+        const textboxClickResult = this.getClickedTextboxElement(mouseX, mouseY, true);
         if (textboxClickResult) {
           if (e.shiftKey) this.selectedTextboxIds.add(textboxClickResult.textboxId);
           else if (e.metaKey || e.ctrlKey) this.selectedTextboxIds.delete(textboxClickResult.textboxId);
@@ -3144,9 +3145,9 @@ export class TimelineCanvas {
     return { timelineId: null, position: -1 };
   }
 
-  private getClickedTextboxElement(mouseX: number, mouseY: number): { type: string; textboxId: string; handle?: string } | null {
+  private getClickedTextboxElement(mouseX: number, mouseY: number, cycle = false): { type: string; textboxId: string; handle?: string } | null {
     const borderHitRadius = 8; // Pixels from edge to count as border click
-    
+    const candidates: { type: string; textboxId: string; handle?: string }[] = [];
     for (const textbox of this.textboxes) {
       const screenX = textbox.x * this.zoom + this.offsetX;
       const screenY = textbox.y * this.zoom + this.offsetY;
@@ -3165,38 +3166,43 @@ export class TimelineCanvas {
         
         // Corner handles (check corners first for priority)
         if (topEdge && leftEdge) {
-          return { type: 'resize-handle', textboxId: textbox.id, handle: 'nw' };
+          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'nw' }); continue;
         }
         if (topEdge && rightEdge) {
-          return { type: 'resize-handle', textboxId: textbox.id, handle: 'ne' };
+          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'ne' }); continue;
         }
         if (bottomEdge && leftEdge) {
-          return { type: 'resize-handle', textboxId: textbox.id, handle: 'sw' };
+          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'sw' }); continue;
         }
         if (bottomEdge && rightEdge) {
-          return { type: 'resize-handle', textboxId: textbox.id, handle: 'se' };
+          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'se' }); continue;
         }
         
         // Edge handles
         if (topEdge) {
-          return { type: 'resize-handle', textboxId: textbox.id, handle: 'n' };
+          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'n' }); continue;
         }
         if (bottomEdge) {
-          return { type: 'resize-handle', textboxId: textbox.id, handle: 's' };
+          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 's' }); continue;
         }
         if (leftEdge) {
-          return { type: 'resize-handle', textboxId: textbox.id, handle: 'w' };
+          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'w' }); continue;
         }
         if (rightEdge) {
-          return { type: 'resize-handle', textboxId: textbox.id, handle: 'e' };
+          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'e' }); continue;
         }
         
         // Body click
-        return { type: 'textbox-body', textboxId: textbox.id };
+        candidates.push({ type: 'textbox-body', textboxId: textbox.id });
       }
     }
-
-    return null;
+    if (!candidates.length) return null;
+    if (!cycle || candidates.length === 1) return candidates[0];
+    const key = candidates.map(candidate => candidate.textboxId).join('|');
+    const sameSpot = this.selectionCycle && this.selectionCycle.key === key && Math.abs(this.selectionCycle.x - mouseX) < 6 && Math.abs(this.selectionCycle.y - mouseY) < 6;
+    const index = sameSpot ? (this.selectionCycle!.index + 1) % candidates.length : 0;
+    this.selectionCycle = { key, x: mouseX, y: mouseY, index };
+    return candidates[index];
   }
 
   private getClickedLine(mouseX: number, mouseY: number): string | null {
