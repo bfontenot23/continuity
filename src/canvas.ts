@@ -1223,6 +1223,9 @@ export class TimelineCanvas {
         const left = Math.min(this.selectionRect.startX, this.selectionRect.endX), right = Math.max(this.selectionRect.startX, this.selectionRect.endX);
         const top = Math.min(this.selectionRect.startY, this.selectionRect.endY), bottom = Math.max(this.selectionRect.startY, this.selectionRect.endY);
         const remove = e.metaKey || e.ctrlKey;
+        // Releasing Shift during a marquee changes the result to replace, per the
+        // selection contract. Ctrl/Cmd retains its explicit removal behavior.
+        if (!remove && !e.shiftKey) this.clearSelection();
         const apply = (ids: Set<string>, id: string) => remove ? ids.delete(id) : ids.add(id);
         for (const textbox of this.textboxes) {
           const x = textbox.x * this.zoom + this.offsetX, y = textbox.y * this.zoom + this.offsetY;
@@ -1238,6 +1241,18 @@ export class TimelineCanvas {
           const x1 = line.gridX1 * this.gridSize * this.zoom + this.offsetX, y1 = line.gridY1 * this.gridSize * this.zoom + this.offsetY;
           const x2 = line.gridX2 * this.gridSize * this.zoom + this.offsetX, y2 = line.gridY2 * this.gridSize * this.zoom + this.offsetY;
           if (Math.min(x1, x2) >= left && Math.max(x1, x2) <= right && Math.min(y1, y2) >= top && Math.max(y1, y2) <= bottom) apply(this.selectedLineIds, line.id);
+        }
+        for (const branch of this.branches) {
+          const startTimeline = this.timelines.find(timeline => timeline.id === branch.startContinuityId);
+          const endTimeline = this.timelines.find(timeline => timeline.id === branch.endContinuityId);
+          if (!startTimeline || !endTimeline) continue;
+          const startX = startTimeline.x * this.zoom + this.offsetX + branch.startPosition * this.gridSize * this.zoom;
+          const startY = startTimeline.y * this.zoom + this.offsetY;
+          const endX = endTimeline.x * this.zoom + this.offsetX + branch.endPosition * this.gridSize * this.zoom;
+          const endY = endTimeline.y * this.zoom + this.offsetY;
+          const curveOffset = Math.min(Math.hypot(endX - startX, endY - startY) * 0.4, 100);
+          const points = [[startX, startY], [startX + curveOffset, startY], [endX - curveOffset, endY], [endX, endY]];
+          if (points.every(([x, y]) => x >= left && x <= right && y >= top && y <= bottom)) apply(this.selectedBranchIds, branch.id);
         }
         this.selectionRect = null;
         this.render();
