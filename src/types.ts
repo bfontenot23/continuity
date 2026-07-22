@@ -192,7 +192,7 @@ export function createTextbox(
   x: number,
   y: number,
   width: number = 100,
-  height: number = 60,
+  height: number = 80,
   fontSize: number = 14
 ): Textbox {
   return {

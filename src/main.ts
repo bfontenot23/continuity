@@ -453,7 +453,7 @@ function initializeApp() {
     if (!state.currentProject) return;
 
     // Create textbox with default dimensions
-    const textbox = createTextbox(x, y, 100, 60, 14);
+    const textbox = createTextbox(x, y, 100, 80, 14);
     stateManager.addTextbox(textbox);
     stateManager.selectTextbox(textbox.id);
 
