@@ -20,6 +20,10 @@ export interface AppState {
 export class AppStateManager {
   private state: AppState;
   private listeners: Set<StateChangeListener> = new Set();
+  private undoStack: Project[] = [];
+  private redoStack: Project[] = [];
+  private lastProjectSnapshot: Project | null = null;
+  private readonly historyLimit = 20;
 
   constructor() {
     this.state = {
@@ -38,7 +42,29 @@ export class AppStateManager {
 
   setProject(project: Project): void {
     this.state.currentProject = project;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.lastProjectSnapshot = this.cloneProject(project);
     this.notifyListeners();
+  }
+
+  canUndo(): boolean { return this.undoStack.length > 0; }
+  canRedo(): boolean { return this.redoStack.length > 0; }
+
+  undo(): void {
+    if (!this.state.currentProject || !this.undoStack.length) return;
+    this.redoStack.push(this.cloneProject(this.state.currentProject));
+    this.state.currentProject = this.undoStack.pop()!;
+    this.lastProjectSnapshot = this.cloneProject(this.state.currentProject);
+    this.notifyListeners(false);
+  }
+
+  redo(): void {
+    if (!this.state.currentProject || !this.redoStack.length) return;
+    this.undoStack.push(this.cloneProject(this.state.currentProject));
+    this.state.currentProject = this.redoStack.pop()!;
+    this.lastProjectSnapshot = this.cloneProject(this.state.currentProject);
+    this.notifyListeners(false);
   }
 
   /** Publish the current state after an interaction that does not mutate it directly. */
@@ -775,9 +801,22 @@ export class AppStateManager {
     return () => this.listeners.delete(listener);
   }
 
-  private notifyListeners(): void {
+  private notifyListeners(recordHistory: boolean = true): void {
+    if (recordHistory && this.state.currentProject) {
+      const current = this.cloneProject(this.state.currentProject);
+      if (this.lastProjectSnapshot && JSON.stringify(current) !== JSON.stringify(this.lastProjectSnapshot)) {
+        this.undoStack.push(this.lastProjectSnapshot);
+        if (this.undoStack.length > this.historyLimit) this.undoStack.shift();
+        this.redoStack = [];
+      }
+      this.lastProjectSnapshot = current;
+    }
     this.persistProject();
     this.listeners.forEach(listener => listener(this.getState()));
+  }
+
+  private cloneProject(project: Project): Project {
+    return JSON.parse(JSON.stringify(project)) as Project;
   }
 
   private persistProject(): void {

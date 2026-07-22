@@ -638,6 +638,18 @@ function initializeApp() {
     // Skip if typing in an input field (except for Enter in edit sidebar)
     const target = e.target as HTMLElement;
     const isInInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+
+    if ((e.ctrlKey || e.metaKey) && !isInInput && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) stateManager.redo();
+      else stateManager.undo();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && !isInInput && e.key.toLowerCase() === 'y') {
+      e.preventDefault();
+      stateManager.redo();
+      return;
+    }
     
     // Shift + T: New Timeline
     if (e.shiftKey && e.key === 'T' && !isInInput) {
