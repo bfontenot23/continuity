@@ -166,10 +166,14 @@ function initializeApp() {
     }
 
     async function handleShowChangelog() {
-      const changelogContent = await ContinuityFileManager.loadChangelog();
+      const appInfo = await ContinuityFileManager.loadAppInfo();
+      const [changelogContent, versions] = await Promise.all([
+        ContinuityFileManager.loadChangelog(appInfo.version),
+        ContinuityFileManager.loadChangelogVersions(),
+      ]);
       const appElement = document.getElementById('app');
       if (appElement) {
-        const modal = UIComponents.createChangelogModal(changelogContent);
+        const modal = UIComponents.createChangelogModal(changelogContent, versions, appInfo.version, version => ContinuityFileManager.loadChangelog(version));
         appElement.appendChild(modal);
       }
     }

@@ -741,7 +741,7 @@ export class UIComponents {
     return html;
   }
 
-  static createChangelogModal(changelogContent: string): HTMLElement {
+  static createChangelogModal(changelogContent: string, versions: string[] = [], currentVersion?: string, onVersionChange?: (version: string) => Promise<string>): HTMLElement {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
 
@@ -751,6 +751,7 @@ export class UIComponents {
       <div class="modal-content" style="max-width: 600px; max-height: 80vh; display: flex; flex-direction: column;">
         <div class="modal-header">
           <h2 style="margin: 0;">Changelog</h2>
+          ${versions.length > 1 ? `<label style="margin-left: auto; font-size: 0.9rem;">Version <select id="changelog-version-select">${versions.map(version => `<option value="${version}" ${version === currentVersion ? 'selected' : ''}>${version}</option>`).join('')}</select></label>` : ''}
         </div>
         <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 1rem;">
           <div style="font-size: 0.95rem; line-height: 1.6; color: #333;">
@@ -764,6 +765,18 @@ export class UIComponents {
     `;
 
     const closeBtn = modal.querySelector('#modal-close') as HTMLButtonElement;
+    const versionSelect = modal.querySelector('#changelog-version-select') as HTMLSelectElement | null;
+    const content = modal.querySelector('.modal-body > div') as HTMLElement;
+    versionSelect?.addEventListener('change', async () => {
+      if (!onVersionChange) return;
+      versionSelect.disabled = true;
+      content.textContent = 'Loading changelog…';
+      try {
+        content.innerHTML = this.markdownToHtml(await onVersionChange(versionSelect.value));
+      } finally {
+        versionSelect.disabled = false;
+      }
+    });
 
     const closeModal = () => {
       modal.remove();

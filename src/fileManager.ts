@@ -66,12 +66,12 @@ export class ContinuityFileManager {
    * Load changelog markdown for a specific version
    * Falls back to changelog_fallback if version-specific file doesn't exist
    */
-  static async loadChangelog(): Promise<string> {
+  static async loadChangelog(version?: string): Promise<string> {
     const appInfo = await this.loadAppInfo();
-    const version = appInfo.version;
+    const requestedVersion = version ?? appInfo.version;
     
     // Convert version to filename format (e.g., "26.1.2" -> "changelog_26_1_2")
-    const changelogFilename = `changelog_${version.replace(/\./g, '_')}.md`;
+    const changelogFilename = `changelog_${requestedVersion.replace(/\./g, '_')}.md`;
     
     try {
       const response = await fetch(`/assets/changelogs/${changelogFilename}`);
@@ -79,7 +79,7 @@ export class ContinuityFileManager {
         return await response.text();
       }
     } catch (error) {
-      console.warn(`Failed to load changelog for version ${version}:`, error);
+      console.warn(`Failed to load changelog for version ${requestedVersion}:`, error);
     }
     
     // Fallback to changelog_fallback
@@ -93,6 +93,20 @@ export class ContinuityFileManager {
     }
     
     return 'Unable to load changelog.';
+  }
+
+  /** Changelogs are explicitly indexed so the fallback document is never presented as a release. */
+  static async loadChangelogVersions(): Promise<string[]> {
+    try {
+      const response = await fetch('/assets/changelogs/index.json');
+      if (response.ok) {
+        const versions = await response.json();
+        return Array.isArray(versions) ? versions.filter((version): version is string => typeof version === 'string') : [];
+      }
+    } catch (error) {
+      console.warn('Failed to load changelog index:', error);
+    }
+    return [];
   }
 
   /**
