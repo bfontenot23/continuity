@@ -2155,31 +2155,6 @@ export class UIComponents {
     closeBtn.className = 'close-btn';
     closeBtn.innerHTML = '×';
     closeBtn.addEventListener('click', () => {
-      // Save before closing for textboxes and lines
-      if (type === 'textbox') {
-        const contentTextarea = content.querySelector('#textbox-content-input') as HTMLTextAreaElement;
-        const fontSizeInput = content.querySelector('#textbox-fontsize-input') as HTMLInputElement;
-        const updates: any = {};
-        if (contentTextarea) updates.content = contentTextarea.value;
-        if (fontSizeInput) {
-          const fontSize = parseInt(fontSizeInput.value, 10);
-          if (!isNaN(fontSize)) updates.fontSize = fontSize;
-        }
-        if (Object.keys(updates).length > 0) {
-          stateManager.updateTextbox(data.id, updates);
-        }
-      } else if (type === 'line') {
-        const lineStyleSelect = content.querySelector('#line-linestyle-select') as HTMLSelectElement;
-        const startEndpointSelect = content.querySelector('#line-start-endpoint-select') as HTMLSelectElement;
-        const endEndpointSelect = content.querySelector('#line-end-endpoint-select') as HTMLSelectElement;
-        const updates: any = {};
-        if (lineStyleSelect) updates.lineStyle = lineStyleSelect.value;
-        if (startEndpointSelect) updates.startEndpointStyle = startEndpointSelect.value as 'dot' | 'arrow' | 'none';
-        if (endEndpointSelect) updates.endEndpointStyle = endEndpointSelect.value as 'dot' | 'arrow' | 'none';
-        if (Object.keys(updates).length > 0) {
-          stateManager.updateLine(data.id, updates);
-        }
-      }
       onClose();
     });
     header.appendChild(closeBtn);
@@ -2206,8 +2181,8 @@ export class UIComponents {
 
       content.appendChild(nameGroup);
 
-      // Autosave on blur
-      nameInput.addEventListener('blur', () => {
+      // Real-time update on input
+      nameInput.addEventListener('input', () => {
         if (continuity) {
           stateManager.updateContinuity(data.id, { name: nameInput.value });
         }
@@ -2506,8 +2481,8 @@ export class UIComponents {
 
       content.appendChild(titleGroup);
 
-      // Autosave on blur
-      titleInput.addEventListener('blur', () => {
+      // Real-time update on input
+      titleInput.addEventListener('input', () => {
         if (continuity) {
           stateManager.updateChapter(continuity.id, data.id, { title: titleInput.value });
         }
@@ -2625,8 +2600,8 @@ export class UIComponents {
 
       content.appendChild(contentGroup);
 
-      // Autosave on blur
-      contentTextarea.addEventListener('blur', () => {
+      // Real-time update on input
+      contentTextarea.addEventListener('input', () => {
         stateManager.updateTextbox(data.id, { content: contentTextarea.value });
       });
 
@@ -2985,89 +2960,7 @@ export class UIComponents {
     const actions = document.createElement('div');
     actions.className = 'edit-sidebar-actions';
 
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'btn-primary';
-    saveBtn.textContent = 'Save';
-    
-    const handleSave = () => {
-      if (type === 'timeline') {
-        const nameInput = content.querySelector('#timeline-name-input') as HTMLInputElement;
-        if (nameInput && continuity) {
-          stateManager.updateContinuity(data.id, { name: nameInput.value });
-        }
-      } else if (type === 'chapter') {
-        // Chapter saving
-        if (continuity) {
-          const titleInput = content.querySelector('#chapter-title-input') as HTMLInputElement;
-          const descTextarea = content.querySelector('#chapter-desc-input') as HTMLTextAreaElement;
-          const arcSelect = content.querySelector('#chapter-arc-select') as HTMLSelectElement;
-          const gridLengthInput = content.querySelector('#chapter-gridlength-input') as HTMLInputElement;
-          
-          const updates: any = {};
-          if (titleInput) updates.title = titleInput.value;
-          if (descTextarea) updates.description = descTextarea.value;
-          if (arcSelect) updates.arcId = arcSelect.value || undefined;
-          if (gridLengthInput) {
-            const gridLengthValue = parseInt(gridLengthInput.value, 10);
-            updates.gridLength = isNaN(gridLengthValue) || gridLengthValue < 0 ? 0 : gridLengthValue;
-          }
-          
-          stateManager.updateChapter(continuity.id, data.id, updates);
-        }
-      } else if (type === 'branch') {
-        // Branch saving
-        const descTextarea = content.querySelector('#branch-desc-input') as HTMLTextAreaElement;
-        const lineStyleSelect = content.querySelector('#branch-linestyle-select') as HTMLSelectElement;
-        const startEndpointSelect = content.querySelector('#branch-start-endpoint-select') as HTMLSelectElement;
-        const endEndpointSelect = content.querySelector('#branch-end-endpoint-select') as HTMLSelectElement;
-        const updates: any = {};
-        if (descTextarea) updates.description = descTextarea.value;
-        if (lineStyleSelect) updates.lineStyle = lineStyleSelect.value;
-        if (startEndpointSelect) updates.startEndpointStyle = startEndpointSelect.value as 'dot' | 'arrow' | 'none';
-        if (endEndpointSelect) updates.endEndpointStyle = endEndpointSelect.value as 'dot' | 'arrow' | 'none';
-        stateManager.updateBranch(data.id, updates);
-      } else if (type === 'textbox') {
-        // Textbox saving
-        const contentTextarea = content.querySelector('#textbox-content-input') as HTMLTextAreaElement;
-        const fontSizeInput = content.querySelector('#textbox-fontsize-input') as HTMLInputElement;
-        const updates: any = {};
-        if (contentTextarea) updates.content = contentTextarea.value;
-        if (fontSizeInput) {
-          const fontSize = parseInt(fontSizeInput.value, 10);
-          if (!isNaN(fontSize)) updates.fontSize = fontSize;
-        }
-        stateManager.updateTextbox(data.id, updates);
-      } else if (type === 'line') {
-        // Line saving
-        const lineStyleSelect = content.querySelector('#line-linestyle-select') as HTMLSelectElement;
-        const startEndpointSelect = content.querySelector('#line-start-endpoint-select') as HTMLSelectElement;
-        const endEndpointSelect = content.querySelector('#line-end-endpoint-select') as HTMLSelectElement;
-        const updates: any = {};
-        if (lineStyleSelect) updates.lineStyle = lineStyleSelect.value;
-        if (startEndpointSelect) updates.startEndpointStyle = startEndpointSelect.value as 'dot' | 'arrow' | 'none';
-        if (endEndpointSelect) updates.endEndpointStyle = endEndpointSelect.value as 'dot' | 'arrow' | 'none';
-        stateManager.updateLine(data.id, updates);
-      }
-      onClose();
-    };
-    
-    saveBtn.addEventListener('click', handleSave);
-    
-    // Add Enter key handler to sidebar for save
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-        // Only trigger on Enter if not in textarea (where Enter should add new line)
-        const target = e.target as HTMLElement;
-        if (target.tagName !== 'TEXTAREA') {
-          e.preventDefault();
-          handleSave();
-        }
-      }
-    };
-    
-    sidebar.addEventListener('keydown', handleKeyDown);
 
-    actions.appendChild(saveBtn);
 
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn-danger';
