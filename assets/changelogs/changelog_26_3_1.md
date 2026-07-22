@@ -10,6 +10,7 @@
 - Added configurable touch double-tap timing, one-finger touch interaction, two-finger pan/pinch zoom, and two/three-finger undo/redo gestures.
 - Added browser-standard undo/redo shortcuts with a local 20-step history.
 - Added initial selection support for chapters and floating elements, including multi-select, copy/cut/paste/delete, and grouped movement for textboxes, shapes, and images.
+- Added Shift-drag marquee selection for chapters and floating elements.
 - Branch and chapter placement on an empty, valid grid location can create a new timeline automatically.
 
 ## Improvements

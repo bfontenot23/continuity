@@ -74,6 +74,7 @@ export class TimelineCanvas {
   private draggedChapterId: string | null = null;
   private draggedChapterTimelineId: string | null = null;
   private selectedChapterIds = new Set<string>();
+  private selectionRect: { startX: number; startY: number; endX: number; endY: number } | null = null;
   private chapterDragStartX: number = 0;
   private chapterOriginalX: number = 0;
   private pendingDragChapterId: string | null = null;
@@ -926,6 +927,11 @@ export class TimelineCanvas {
         }
 
         // Start panning
+        if (e.shiftKey) {
+          this.selectionRect = { startX: mouseX, startY: mouseY, endX: mouseX, endY: mouseY };
+          this.isDragging = false;
+          return;
+        }
         if (!e.shiftKey && !e.metaKey && !e.ctrlKey) {
           this.selectedChapterIds.clear();
           this.selectedTextboxIds.clear();
@@ -993,6 +999,10 @@ export class TimelineCanvas {
         const deltaY = e.clientY - this.dragStartY;
         this.offsetX = this.dragStartOffsetX + deltaX;
         this.offsetY = this.dragStartOffsetY + deltaY;
+        this.render();
+      } else if (this.selectionRect) {
+        this.selectionRect.endX = mouseX;
+        this.selectionRect.endY = mouseY;
         this.render();
       } else if (this.isDraggingTimeline && this.draggedTimelineId) {
         // Handle timeline dragging
@@ -1144,6 +1154,22 @@ export class TimelineCanvas {
     });
 
     this.canvas.addEventListener('mouseup', () => {
+      if (this.selectionRect) {
+        const left = Math.min(this.selectionRect.startX, this.selectionRect.endX), right = Math.max(this.selectionRect.startX, this.selectionRect.endX);
+        const top = Math.min(this.selectionRect.startY, this.selectionRect.endY), bottom = Math.max(this.selectionRect.startY, this.selectionRect.endY);
+        for (const textbox of this.textboxes) {
+          const x = textbox.x * this.zoom + this.offsetX, y = textbox.y * this.zoom + this.offsetY;
+          if (x >= left && x + textbox.width * this.zoom <= right && y >= top && y + textbox.height * this.zoom <= bottom) this.selectedTextboxIds.add(textbox.id);
+        }
+        for (const timeline of this.timelines) for (const chapter of timeline.chapters ?? []) {
+          if (chapter.title === 'Head' || chapter.title === 'Tail') continue;
+          const x = timeline.x * this.zoom + this.offsetX + chapter.x * this.gridSize * this.zoom;
+          const y = timeline.y * this.zoom + this.offsetY;
+          if (x >= left && x + chapter.width * this.gridSize * this.zoom <= right && y - 28 >= top && y + 12 <= bottom) this.selectedChapterIds.add(chapter.id);
+        }
+        this.selectionRect = null;
+        this.render();
+      }
       // Clear any pending drag
       if (this.dragDelayTimer) {
         clearTimeout(this.dragDelayTimer);
@@ -1850,6 +1876,13 @@ export class TimelineCanvas {
 
     // Draw timelines
     this.drawTimelines();
+
+    if (this.selectionRect) {
+      const { startX, startY, endX, endY } = this.selectionRect;
+      this.ctx.save(); this.ctx.strokeStyle = '#1976d2'; this.ctx.fillStyle = 'rgba(25,118,210,0.12)'; this.ctx.setLineDash([6,4]);
+      this.ctx.fillRect(Math.min(startX,endX), Math.min(startY,endY), Math.abs(endX-startX), Math.abs(endY-startY));
+      this.ctx.strokeRect(Math.min(startX,endX), Math.min(startY,endY), Math.abs(endX-startX), Math.abs(endY-startY)); this.ctx.restore();
+    }
 
     // Draw lines
     renderLines(this.ctx, this.lines, {
