@@ -639,13 +639,17 @@ export function createAppStyles(): HTMLStyleElement {
 
     .edit-sidebar {
       position: fixed;
-      right: 0;
-      top: 0;
-      bottom: 0;
+      right: clamp(1rem, 3vw, 3rem);
+      top: 12.5vh;
+      bottom: auto;
       width: 350px;
+      height: 75vh;
+      max-height: 75vh;
       background: white;
-      box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
-      overflow-y: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
+      overflow: hidden;
       z-index: 1000;
       display: flex;
       flex-direction: column;
