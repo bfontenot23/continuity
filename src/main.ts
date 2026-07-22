@@ -258,6 +258,18 @@ function initializeApp() {
     canvas.setOnAddBranch((startTimelineId: string, startPosition: number, endTimelineId: string, endPosition: number) => {
       handleAddBranch(startTimelineId, startPosition, endTimelineId, endPosition);
     });
+    canvas.setOnAddBranchToNewTimeline((startTimelineId: string, startPosition: number, x: number, y: number) => {
+      const continuity = createTimelineAt(x, y);
+      if (continuity) handleAddBranch(startTimelineId, startPosition, continuity.id, 0);
+    });
+    canvas.setOnAddChapterToNewTimeline((x: number, y: number) => {
+      const continuity = createTimelineAt(x, y);
+      if (!continuity) return;
+      const chapter = createChapter('Chapter', undefined, 1);
+      stateManager.insertChapter(continuity.id, chapter, 0);
+      stateManager.selectChapter(chapter.id);
+      setTimeout(() => showChapterEditSidebar(chapter.id, true), 0);
+    });
 
     canvas.setOnEditTimeline((timelineId: string) => {
       showTimelineEditSidebar(timelineId);
@@ -403,6 +415,16 @@ function initializeApp() {
     
     // Open the edit sidebar for the new timeline immediately with auto-focus
     showTimelineEditSidebar(continuity.id, true);
+  }
+
+  function createTimelineAt(x: number, y: number): Continuity | null {
+    const state = stateManager.getState();
+    if (!state.currentProject) return null;
+    const continuity = createContinuity(`Timeline ${state.currentProject.continuities.length + 1}`);
+    continuity.x = x;
+    continuity.y = y;
+    stateManager.addContinuity(continuity);
+    return continuity;
   }
 
   function handleAddChapter(timelineId: string, insertionIndex: number) {

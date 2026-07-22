@@ -162,6 +162,8 @@ export class TimelineCanvas {
   private onAddTimeline: (() => void) | null = null;
   private onAddChapter: ((timelineId: string, position: number) => void) | null = null;
   private onAddBranch: ((startTimelineId: string, startPosition: number, endTimelineId: string, endPosition: number) => void) | null = null;
+  private onAddBranchToNewTimeline: ((startTimelineId: string, startPosition: number, x: number, y: number) => void) | null = null;
+  private onAddChapterToNewTimeline: ((x: number, y: number) => void) | null = null;
   private onAddTextbox: ((x: number, y: number) => void) | null = null;
   private onAddLine: ((gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
@@ -352,7 +354,10 @@ export class TimelineCanvas {
             this.insertionMode = false;
             this.render();
           } else {
-            // Invalid location, exit insertion mode
+            const point = this.getValidTimelineCreationPoint(mouseX, mouseY);
+            if (point && this.onAddChapterToNewTimeline) {
+              this.onAddChapterToNewTimeline(point.x, point.y);
+            }
             this.insertionMode = false;
             this.render();
           }
@@ -391,7 +396,10 @@ export class TimelineCanvas {
               }
             }
           } else {
-            // Invalid location, exit branch insertion mode
+            const point = this.branchFirstPoint && this.getValidTimelineCreationPoint(mouseX, mouseY);
+            if (point && this.branchFirstPoint && this.onAddBranchToNewTimeline) {
+              this.onAddBranchToNewTimeline(this.branchFirstPoint.timelineId, this.branchFirstPoint.position, point.x, point.y);
+            }
             this.branchInsertionMode = false;
             this.branchFirstPoint = null;
             this.render();
@@ -1334,6 +1342,14 @@ export class TimelineCanvas {
     this.onAddBranch = callback;
   }
 
+  setOnAddBranchToNewTimeline(callback: (startTimelineId: string, startPosition: number, x: number, y: number) => void): void {
+    this.onAddBranchToNewTimeline = callback;
+  }
+
+  setOnAddChapterToNewTimeline(callback: (x: number, y: number) => void): void {
+    this.onAddChapterToNewTimeline = callback;
+  }
+
   setOnEditTimeline(callback: (timelineId: string) => void): void {
     this.onEditTimeline = callback;
   }
@@ -2209,6 +2225,24 @@ export class TimelineCanvas {
       return { timelineId: result.timelineId, position: insertionIndex };
     }
     return null;
+  }
+
+  /**
+   * Return a grid-aligned empty location suitable for a newly created timeline.
+   * A new timeline begins as a two-grid-unit segment; its full visual height is
+   * included here so it cannot be created on top of an existing timeline.
+   */
+  private getValidTimelineCreationPoint(mouseX: number, mouseY: number): { x: number; y: number } | null {
+    const x = Math.round(((mouseX - this.offsetX) / this.zoom) / this.gridSize) * this.gridSize;
+    const y = Math.round(((mouseY - this.offsetY) / this.zoom) / this.gridSize) * this.gridSize;
+    const candidate = { left: x, right: x + this.gridSize * 2, top: y - this.timelineHeight / 2, bottom: y + this.timelineHeight / 2 };
+    const overlaps = this.timelines.some(timeline => {
+      const finalChapter = timeline.chapters?.[timeline.chapters.length - 1];
+      const width = Math.max(this.gridSize * 2, ((finalChapter?.x ?? 1) + (finalChapter?.width ?? 1)) * this.gridSize);
+      const existing = { left: timeline.x, right: timeline.x + width, top: timeline.y - this.timelineHeight / 2, bottom: timeline.y + this.timelineHeight / 2 };
+      return candidate.left < existing.right && candidate.right > existing.left && candidate.top < existing.bottom && candidate.bottom > existing.top;
+    });
+    return overlaps ? null : { x, y };
   }
 
   /**
