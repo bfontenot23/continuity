@@ -94,6 +94,7 @@ export class TimelineCanvas {
   private chapterOriginalX: number = 0;
   private pendingDragChapterId: string | null = null;
   private pendingDragChapterTimelineId: string | null = null;
+  private draggedChapterIds: string[] = [];
   
   // Arc dragging
   private isDraggingArc: boolean = false;
@@ -201,6 +202,7 @@ export class TimelineCanvas {
   private onEditTextbox: ((textboxId: string) => void) | null = null;
   private onEditLine: ((lineId: string) => void) | null = null;
   private onReorderChapter: ((timelineId: string, chapterId: string, newPosition: number) => void) | null = null;
+  private onReorderChapters: ((timelineId: string, chapterIds: string[], newPosition: number) => void) | null = null;
   private onTimelineHovered: ((timelineId: string | null, position: 'above' | 'below') => void) | null = null;
   private onTimelineMoved: ((timelineId: string, x: number, y: number) => void) | null = null;
   private onReorderArc: ((timelineId: string, arcId: string, newPosition: number) => void) | null = null;
@@ -686,6 +688,8 @@ export class TimelineCanvas {
           if (e.shiftKey) this.selectedChapterIds.add(draggableChapter.chapterId);
           else if (e.metaKey || e.ctrlKey) this.selectedChapterIds.delete(draggableChapter.chapterId);
           else this.selectOnly(this.selectedChapterIds, draggableChapter.chapterId);
+          this.draggedChapterIds = this.getContiguousSelectedChapterIds(draggableChapter.timelineId, draggableChapter.chapterId);
+          this.selectedChapterIds = new Set(this.draggedChapterIds);
           // Store pending drag info
           this.pendingDragChapterId = draggableChapter.chapterId;
           this.pendingDragChapterTimelineId = draggableChapter.timelineId;
@@ -1266,7 +1270,7 @@ export class TimelineCanvas {
       }
       
       // Save chapter position if we were dragging a chapter
-      if (this.isDraggingChapter && this.draggedChapterId && this.draggedChapterTimelineId && this.onReorderChapter) {
+      if (this.isDraggingChapter && this.draggedChapterId && this.draggedChapterTimelineId && (this.onReorderChapter || this.onReorderChapters)) {
         // Use the hovered insertion point to determine where to place the chapter
         if (this.hoveredInsertionPoint.timelineId && this.hoveredInsertionPoint.position >= 0) {
           const timeline = this.timelines.find(t => t.id === this.hoveredInsertionPoint.timelineId);
@@ -1274,7 +1278,8 @@ export class TimelineCanvas {
             // The position already accounts for Head/Tail, so we can use it directly
             // Subtract 1 because position includes the Head chapter
             const targetIndex = this.hoveredInsertionPoint.position - 1;
-            this.onReorderChapter(this.draggedChapterTimelineId, this.draggedChapterId, targetIndex);
+            if (this.draggedChapterIds.length > 1) this.onReorderChapters?.(this.draggedChapterTimelineId, this.draggedChapterIds, targetIndex);
+            else this.onReorderChapter?.(this.draggedChapterTimelineId, this.draggedChapterId, targetIndex);
           }
         } else {
           // Invalid drop location - reset chapter positions by re-syncing from state
@@ -1308,6 +1313,7 @@ export class TimelineCanvas {
       this.isDraggingTextbox = false;
       this.isResizingTextbox = false;
       this.draggedChapterId = null;
+      this.draggedChapterIds = [];
       this.draggedChapterTimelineId = null;
       this.draggedArcId = null;
       this.draggedArcTimelineId = null;
@@ -1566,6 +1572,10 @@ export class TimelineCanvas {
 
   setOnReorderChapter(callback: (timelineId: string, chapterId: string, newPosition: number) => void): void {
     this.onReorderChapter = callback;
+  }
+
+  setOnReorderChapters(callback: (timelineId: string, chapterIds: string[], newPosition: number) => void): void {
+    this.onReorderChapters = callback;
   }
 
   setOnReorderArc(callback: (timelineId: string, arcId: string, newPosition: number) => void): void {
@@ -2002,6 +2012,17 @@ export class TimelineCanvas {
   private selectOnly(ids: Set<string>, id: string): void {
     this.clearSelection();
     ids.add(id);
+  }
+
+  private getContiguousSelectedChapterIds(timelineId: string, chapterId: string): string[] {
+    const chapters = (this.timelines.find(timeline => timeline.id === timelineId)?.chapters ?? []).filter(chapter => chapter.title !== 'Head' && chapter.title !== 'Tail');
+    const index = chapters.findIndex(chapter => chapter.id === chapterId);
+    if (index < 0) return [chapterId];
+    let start = index;
+    let end = index;
+    while (start > 0 && this.selectedChapterIds.has(chapters[start - 1].id)) start--;
+    while (end < chapters.length - 1 && this.selectedChapterIds.has(chapters[end + 1].id)) end++;
+    return chapters.slice(start, end + 1).filter(chapter => this.selectedChapterIds.has(chapter.id)).map(chapter => chapter.id);
   }
 
   private drawTextboxShapes(): void {

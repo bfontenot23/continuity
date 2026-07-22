@@ -412,6 +412,28 @@ export class AppStateManager {
     }
   }
 
+  /** Reorder adjacent chapters together while preserving their relative order. */
+  reorderChapters(continuityId: string, chapterIds: string[], targetIndex: number): void {
+    if (chapterIds.length < 2) {
+      if (chapterIds[0]) this.reorderChapter(continuityId, chapterIds[0], targetIndex);
+      return;
+    }
+    const continuity = this.state.currentProject?.continuities.find(candidate => candidate.id === continuityId);
+    if (!continuity) return;
+    const ids = new Set(chapterIds);
+    const sorted = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
+    const moving = sorted.filter(chapter => ids.has(chapter.id));
+    if (moving.length !== chapterIds.length) return;
+    const removedBeforeTarget = sorted.slice(0, targetIndex).filter(chapter => ids.has(chapter.id)).length;
+    const remaining = sorted.filter(chapter => !ids.has(chapter.id));
+    const insertionIndex = Math.max(0, Math.min(remaining.length, targetIndex - removedBeforeTarget));
+    remaining.splice(insertionIndex, 0, ...moving);
+    remaining.forEach((chapter, index) => { chapter.timestamp = index + 1; });
+    this.recalculateBranchPositions(continuity);
+    this.state.currentProject!.modified = Date.now();
+    this.notifyListeners();
+  }
+
   addArc(continuityId: string, arc: Arc): void {
     if (this.state.currentProject) {
       const continuity = this.state.currentProject.continuities.find(c => c.id === continuityId);

@@ -16,6 +16,7 @@
 - Delete and Backspace now remove mixed chapter, branch, line, textbox, shape, and image selections as a single undoable action.
 - Standard copy, cut, and paste now work for mixed floating textbox, shape, image, and line selections, preserving one undo step per paste or cut.
 - Selected lines now move together, with one undo entry for the grouped move.
+- Dragging adjacent selected chapters now reorders the contiguous group together while preserving chapter order and branch anchors.
 - Branch and chapter placement on an empty, valid grid location can create a new timeline automatically.
 
 ## Improvements

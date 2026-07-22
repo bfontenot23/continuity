@@ -345,6 +345,7 @@ function initializeApp() {
       // targetIndex is the position in the sorted chapter array (0-based)
       stateManager.reorderChapter(timelineId, chapterId, targetIndex);
     });
+    canvas.setOnReorderChapters((timelineId, chapterIds, targetIndex) => stateManager.reorderChapters(timelineId, chapterIds, targetIndex));
 
     canvas.setOnReorderArc((timelineId: string, arcId: string, targetIndex: number) => {
       // targetIndex is the position in the sorted arc array (0-based)
