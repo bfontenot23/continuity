@@ -24,6 +24,7 @@ export interface SidebarData {
   fontSize?: number;
   alignX?: 'left' | 'center' | 'right';
   alignY?: 'top' | 'middle' | 'bottom';
+  shapeType?: 'square' | 'circle' | 'triangle';
 }
 
 export interface SidebarDependencies {
@@ -563,6 +564,20 @@ export function createEditSidebar(
     contentGroup.appendChild(contentTextarea);
 
     content.appendChild(contentGroup);
+
+    if (data.shapeType) {
+      const shapeGroup = document.createElement('div');
+      shapeGroup.className = 'form-group';
+      const shapeLabel = document.createElement('label');
+      shapeLabel.textContent = 'Shape';
+      const shapeSelect = document.createElement('select');
+      ['square', 'circle', 'triangle'].forEach(shapeType => {
+        const option = document.createElement('option'); option.value = shapeType; option.textContent = shapeType[0].toUpperCase() + shapeType.slice(1);
+        option.selected = data.shapeType === shapeType; shapeSelect.appendChild(option);
+      });
+      shapeSelect.addEventListener('change', () => stateManager.updateTextbox(data.id, { shapeType: shapeSelect.value as 'square' | 'circle' | 'triangle' }));
+      shapeGroup.append(shapeLabel, shapeSelect); content.appendChild(shapeGroup);
+    }
 
     // Save while typing without recreating the focused sidebar.
     contentTextarea.addEventListener('input', () => {

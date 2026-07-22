@@ -1,4 +1,4 @@
-import { createProject, createContinuity, createChapter, createBranch, createTextbox, createLine, Continuity } from './types';
+import { createProject, createContinuity, createChapter, createBranch, createTextbox, createShape, createLine, Continuity } from './types';
 import { ContinuityFileManager, LocalStorageManager } from './fileManager';
 import { AppStateManager } from './state';
 import { UIComponents } from './ui';
@@ -124,7 +124,7 @@ function initializeApp() {
 
     openEditSidebar('textbox', {
       id: textboxId, content: textbox.content, fontSize: textbox.fontSize,
-      alignX: textbox.alignX, alignY: textbox.alignY,
+      alignX: textbox.alignX, alignY: textbox.alignY, shapeType: textbox.shapeType,
     }, null, autoFocus);
   }
 
@@ -262,6 +262,7 @@ function initializeApp() {
       const continuity = createTimelineAt(x, y);
       if (continuity) handleAddBranch(startTimelineId, startPosition, continuity.id, 0);
     });
+    canvas.setOnAddShape((x: number, y: number) => handleAddShape(x, y));
     canvas.setOnAddChapterToNewTimeline((x: number, y: number) => {
       const continuity = createTimelineAt(x, y);
       if (!continuity) return;
@@ -492,6 +493,15 @@ function initializeApp() {
     }, 0);
   }
 
+  function handleAddShape(x: number, y: number) {
+    const state = stateManager.getState();
+    if (!state.currentProject) return;
+    const shape = createShape(x, y);
+    stateManager.addTextbox(shape);
+    stateManager.selectTextbox(shape.id);
+    setTimeout(() => showTextboxEditSidebar(shape.id, true), 0);
+  }
+
   function handleAddLine(gridX1: number, gridY1: number, gridX2: number, gridY2: number) {
     const state = stateManager.getState();
     if (!state.currentProject) return;
@@ -642,6 +652,14 @@ function initializeApp() {
         const centerX = (canvas.width / 2) / canvasInstance.getZoom() - canvasInstance.getOffsetX() / canvasInstance.getZoom();
         const centerY = (canvas.height / 2) / canvasInstance.getZoom() - canvasInstance.getOffsetY() / canvasInstance.getZoom();
         handleAddTextbox(centerX, centerY);
+      }
+    }
+
+    if (e.shiftKey && e.key === 'W' && !isInInput) {
+      e.preventDefault();
+      const canvas = canvasInstance?.getCanvas();
+      if (canvas && canvasInstance && stateManager.getState().currentProject) {
+        handleAddShape((canvas.width / 2 - canvasInstance.getOffsetX()) / canvasInstance.getZoom(), (canvas.height / 2 - canvasInstance.getOffsetY()) / canvasInstance.getZoom());
       }
     }
 

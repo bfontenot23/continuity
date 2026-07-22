@@ -165,6 +165,7 @@ export class TimelineCanvas {
   private onAddBranchToNewTimeline: ((startTimelineId: string, startPosition: number, x: number, y: number) => void) | null = null;
   private onAddChapterToNewTimeline: ((x: number, y: number) => void) | null = null;
   private onAddTextbox: ((x: number, y: number) => void) | null = null;
+  private onAddShape: ((x: number, y: number) => void) | null = null;
   private onAddLine: ((gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
   private onEditChapter: ((chapterId: string) => void) | null = null;
@@ -329,6 +330,10 @@ export class TimelineCanvas {
             const centerX = (this.canvas.width / 2 - this.offsetX) / this.zoom;
             const centerY = (this.canvas.height / 2 - this.offsetY) / this.zoom;
             this.onAddTextbox(centerX, centerY);
+          } else if (clickedOptionId === 'new-shape' && this.onAddShape) {
+            const centerX = (this.canvas.width / 2 - this.offsetX) / this.zoom;
+            const centerY = (this.canvas.height / 2 - this.offsetY) / this.zoom;
+            this.onAddShape(centerX, centerY);
           }
           // Close menu smoothly
           this.menu.close();
@@ -1390,6 +1395,10 @@ export class TimelineCanvas {
     this.onAddTextbox = callback;
   }
 
+  setOnAddShape(callback: (x: number, y: number) => void): void {
+    this.onAddShape = callback;
+  }
+
   setOnEditTextbox(callback: (textboxId: string) => void): void {
     this.onEditTextbox = callback;
   }
@@ -1732,6 +1741,7 @@ export class TimelineCanvas {
     });
 
     // Draw textboxes (skip DOM overlay when suppressed, e.g., offscreen export)
+    this.drawTextboxShapes();
     if (!this.suppressTextboxRender) {
       this.textboxRenderer.render(this.textboxes, {
         zoom: this.zoom,
@@ -1743,6 +1753,26 @@ export class TimelineCanvas {
     // Draw menu on separate canvas unless suppressed (e.g., during PNG export)
     if (!this.suppressMenuRender) {
       this.renderMenuCanvas();
+    }
+  }
+
+  private drawTextboxShapes(): void {
+    for (const textbox of this.textboxes) {
+      if (!textbox.shapeType) continue;
+      const x = textbox.x * this.zoom + this.offsetX;
+      const y = textbox.y * this.zoom + this.offsetY;
+      const width = textbox.width * this.zoom;
+      const height = textbox.height * this.zoom;
+      this.ctx.save();
+      this.ctx.fillStyle = 'rgba(102, 126, 234, 0.15)';
+      this.ctx.strokeStyle = '#667eea';
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      if (textbox.shapeType === 'circle') this.ctx.ellipse(x + width / 2, y + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
+      else if (textbox.shapeType === 'triangle') {
+        this.ctx.moveTo(x + width / 2, y); this.ctx.lineTo(x + width, y + height); this.ctx.lineTo(x, y + height); this.ctx.closePath();
+      } else this.ctx.rect(x, y, width, height);
+      this.ctx.fill(); this.ctx.stroke(); this.ctx.restore();
     }
   }
 

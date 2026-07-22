@@ -11,6 +11,7 @@ export class MenuSystem {
     { id: 'new-chapter', label: 'New Chapter', keybind: 'Shift + C' },
     { id: 'new-branch', label: 'New Branch', keybind: 'Shift + B' },
     { id: 'new-textbox', label: 'New Textbox', keybind: 'Shift + S' },
+    { id: 'new-shape', label: 'New Shape', keybind: 'Shift + W' },
     { id: 'new-line', label: 'New Line', keybind: 'Shift + D' },
   ];
 

@@ -48,6 +48,8 @@ export interface Textbox {
   fontSize: number; // Font size in pixels
   alignX?: 'left' | 'center' | 'right'; // Horizontal alignment (default: left)
   alignY?: 'top' | 'middle' | 'bottom'; // Vertical alignment (default: top)
+  /** When present this textbox is rendered as a shape, retaining markdown text behavior. */
+  shapeType?: 'square' | 'circle' | 'triangle';
 }
 
 export interface Line {
@@ -214,6 +216,10 @@ export function createTextbox(
     alignX: 'left',
     alignY: 'top',
   };
+}
+
+export function createShape(x: number, y: number, shapeType: Textbox['shapeType'] = 'square'): Textbox {
+  return { ...createTextbox(x, y, 120, 120, 14), content: 'New shape', shapeType };
 }
 
 export function createLine(
