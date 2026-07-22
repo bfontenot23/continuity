@@ -112,6 +112,8 @@ export class TimelineCanvas {
   
   // Textboxes
   private textboxes: Textbox[] = [];
+  private selectedTextboxIds = new Set<string>();
+  private textboxClipboard: Textbox[] = [];
   private textboxOverlayContainer: HTMLElement | null = null;
   private textboxRenderer: TextboxOverlayRenderer;
   private isDraggingTextbox: boolean = false;
@@ -173,6 +175,8 @@ export class TimelineCanvas {
   private onAddTextbox: ((x: number, y: number) => void) | null = null;
   private onAddShape: ((x: number, y: number) => void) | null = null;
   private onAddImage: ((x: number, y: number) => void) | null = null;
+  private onDeleteTextboxes: ((ids: string[]) => void) | null = null;
+  private onDuplicateTextboxes: ((textboxes: Textbox[]) => void) | null = null;
   private imageCache = new Map<string, HTMLImageElement>();
   private onAddLine: ((gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
@@ -278,6 +282,26 @@ export class TimelineCanvas {
       this.canvas.style.cursor = 'grab';
       e.preventDefault();
       this.render();
+    });
+    document.addEventListener('keydown', (e) => {
+      const target = e.target as HTMLElement;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT') return;
+      const modifier = e.metaKey || e.ctrlKey;
+      if (modifier && e.key.toLowerCase() === 'a') {
+        e.preventDefault(); this.selectedTextboxIds = new Set(this.textboxes.map(textbox => textbox.id)); this.render(); return;
+      }
+      if (modifier && e.key.toLowerCase() === 'c' && this.selectedTextboxIds.size) {
+        e.preventDefault(); this.textboxClipboard = this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })); return;
+      }
+      if (modifier && e.key.toLowerCase() === 'x' && this.selectedTextboxIds.size) {
+        e.preventDefault(); this.textboxClipboard = this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })); this.onDeleteTextboxes?.([...this.selectedTextboxIds]); this.selectedTextboxIds.clear(); return;
+      }
+      if (modifier && e.key.toLowerCase() === 'v' && this.textboxClipboard.length) {
+        e.preventDefault(); const copies = this.textboxClipboard.map(textbox => ({ ...textbox, id: `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`, x: textbox.x + 20, y: textbox.y + 20 })); this.selectedTextboxIds = new Set(copies.map(copy => copy.id)); this.onDuplicateTextboxes?.(copies); return;
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedTextboxIds.size) {
+        e.preventDefault(); this.onDeleteTextboxes?.([...this.selectedTextboxIds]); this.selectedTextboxIds.clear(); this.render();
+      }
     });
 
     // Mouse wheel zoom
@@ -637,6 +661,9 @@ export class TimelineCanvas {
         // Check if clicking on textbox or its resize handle
         const textboxClickResult = this.getClickedTextboxElement(mouseX, mouseY);
         if (textboxClickResult) {
+          if (e.shiftKey) this.selectedTextboxIds.add(textboxClickResult.textboxId);
+          else if (e.metaKey || e.ctrlKey) this.selectedTextboxIds.delete(textboxClickResult.textboxId);
+          else this.selectedTextboxIds = new Set([textboxClickResult.textboxId]);
           if (textboxClickResult.type === 'resize-handle') {
             // Start textbox resize
             this.isResizingTextbox = true;
@@ -1472,6 +1499,11 @@ export class TimelineCanvas {
     this.onGestureRedo = redo;
   }
 
+  setOnTextboxSelectionActions(onDelete: (ids: string[]) => void, onDuplicate: (textboxes: Textbox[]) => void): void {
+    this.onDeleteTextboxes = onDelete;
+    this.onDuplicateTextboxes = onDuplicate;
+  }
+
   setOnEditTextbox(callback: (textboxId: string) => void): void {
     this.onEditTextbox = callback;
   }
@@ -1821,7 +1853,7 @@ export class TimelineCanvas {
         zoom: this.zoom,
         offsetX: this.offsetX,
         offsetY: this.offsetY,
-      }, this.hoveredTextboxId);
+      }, this.hoveredTextboxId, this.selectedTextboxIds);
     }
 
     // Draw menu on separate canvas unless suppressed (e.g., during PNG export)

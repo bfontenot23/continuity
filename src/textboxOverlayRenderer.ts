@@ -13,7 +13,7 @@ export class TextboxOverlayRenderer {
 
   constructor(private readonly container: HTMLElement) {}
 
-render(textboxes: Textbox[], viewport: TextboxOverlayViewport, hoveredTextboxId: string | null): void {
+render(textboxes: Textbox[], viewport: TextboxOverlayViewport, hoveredTextboxId: string | null, selectedTextboxIds: ReadonlySet<string> = new Set()): void {
   // Create or update HTML elements for each textbox
   const existingIds = new Set(this.elements.keys());
   const currentIds = new Set(textboxes.map(t => t.id));
@@ -105,8 +105,12 @@ render(textboxes: Textbox[], viewport: TextboxOverlayViewport, hoveredTextboxId:
     }
     
     // Update hover state
-    if (hoveredTextboxId === textbox.id) {
+    if (selectedTextboxIds.has(textbox.id)) {
+      element.style.borderColor = '#1976d2';
+      element.style.borderStyle = 'solid';
+    } else if (hoveredTextboxId === textbox.id) {
       element.style.borderColor = 'rgba(100, 150, 255, 0.6)';
+      element.style.borderStyle = 'solid';
     } else {
       element.style.borderColor = 'transparent';
     }
