@@ -37,6 +37,8 @@ export interface CanvasLinePosition {
   gridY2: number;
 }
 
+export interface CanvasTimelinePosition { id: string; x: number; y: number; }
+
 export class AppStateManager {
   private state: AppState;
   private listeners: Set<StateChangeListener> = new Set();
@@ -899,6 +901,23 @@ export class AppStateManager {
       const update = updates.get(line.id);
       if (!update) continue;
       Object.assign(line, update);
+      changed = true;
+    }
+    if (!changed) return;
+    project.modified = Date.now();
+    this.notifyListeners();
+  }
+
+  updateCanvasTimelines(timelines: CanvasTimelinePosition[]): void {
+    const project = this.state.currentProject;
+    if (!project || !timelines.length) return;
+    const updates = new Map(timelines.map(timeline => [timeline.id, timeline]));
+    let changed = false;
+    for (const continuity of project.continuities) {
+      const update = updates.get(continuity.id);
+      if (!update) continue;
+      continuity.x = update.x;
+      continuity.y = update.y;
       changed = true;
     }
     if (!changed) return;

@@ -301,10 +301,7 @@ function initializeApp() {
       // Visual feedback for hover states - can be expanded for more interactivity
     });
 
-    canvas.setOnTimelineMoved((timelineId: string, x: number, y: number) => {
-      // Save the new position to the state
-      stateManager.updateContinuity(timelineId, { x, y });
-    });
+    canvas.setOnTimelinesMoved(timelines => stateManager.updateCanvasTimelines(timelines));
 
     canvas.setOnBackgroundClick(() => {
       const hadOpenSidebar = currentEditSidebar !== null;
