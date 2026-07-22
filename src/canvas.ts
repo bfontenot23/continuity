@@ -51,6 +51,9 @@ export class TimelineCanvas {
   private lastClickTime = 0;
   private lastClickX = 0;
   private lastClickY = 0;
+  private touchStartX = 0;
+  private touchStartY = 0;
+  private touchPanStart: { x: number; y: number; offsetX: number; offsetY: number; distance: number; zoom: number } | null = null;
   
   // Timeline dragging
   private isDraggingTimeline: boolean = false;
@@ -220,6 +223,7 @@ export class TimelineCanvas {
     this.canvas.style.top = '0';
     this.canvas.style.left = '0';
     this.canvas.style.zIndex = '1';
+    this.canvas.style.touchAction = 'none';
     this.container.appendChild(this.canvas);
     
     // Setup menu canvas above the main canvas
@@ -292,6 +296,44 @@ export class TimelineCanvas {
       
       this.render();
     });
+
+    // Touch reuses the mouse interaction model for one-finger tap/long-press
+    // while two fingers provide direct pan and pinch-zoom canvas navigation.
+    this.canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        this.touchStartX = touch.clientX; this.touchStartY = touch.clientY;
+        this.canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: touch.clientX, clientY: touch.clientY }));
+      } else if (e.touches.length === 2) {
+        const [first, second] = [e.touches[0], e.touches[1]];
+        const x = (first.clientX + second.clientX) / 2, y = (first.clientY + second.clientY) / 2;
+        this.touchPanStart = { x, y, offsetX: this.offsetX, offsetY: this.offsetY, distance: Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY), zoom: this.zoom };
+        if (this.dragDelayTimer) { clearTimeout(this.dragDelayTimer); this.dragDelayTimer = null; }
+        this.pendingDragTimelineId = null; this.pendingDragChapterId = null; this.pendingDragTextboxId = null;
+        this.isDragging = false;
+      }
+    }, { passive: false });
+    this.canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1 && !this.touchPanStart) {
+        const touch = e.touches[0];
+        this.canvas.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: touch.clientX, clientY: touch.clientY }));
+      } else if (e.touches.length === 2 && this.touchPanStart) {
+        const [first, second] = [e.touches[0], e.touches[1]];
+        const x = (first.clientX + second.clientX) / 2, y = (first.clientY + second.clientY) / 2;
+        const distance = Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+        const nextZoom = Math.max(0.5, Math.min(3, this.touchPanStart.zoom * distance / this.touchPanStart.distance));
+        this.offsetX = this.touchPanStart.offsetX + (x - this.touchPanStart.x) - (x - this.touchPanStart.x) * (nextZoom / this.touchPanStart.zoom - 1);
+        this.offsetY = this.touchPanStart.offsetY + (y - this.touchPanStart.y) - (y - this.touchPanStart.y) * (nextZoom / this.touchPanStart.zoom - 1);
+        this.zoom = nextZoom; this.render();
+      }
+    }, { passive: false });
+    this.canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      if (this.touchPanStart) { this.touchPanStart = null; return; }
+      this.canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: this.touchStartX, clientY: this.touchStartY }));
+    }, { passive: false });
 
     // Mouse drag
     this.canvas.addEventListener('mousedown', (e) => {
