@@ -580,25 +580,37 @@ export class TimelineCanvas {
                 const worldDeltaX = deltaX / this.zoom;
                 const worldDeltaY = deltaY / this.zoom;
                 
-                // Resize based on handle type
-                // Horizontal resizing
-                if (resizeHandle.includes('e')) {
-                  textbox.width = Math.max(50, this.resizeOriginalWidth + worldDeltaX);
-                } else if (resizeHandle.includes('w')) {
-                  const newWidth = Math.max(50, this.resizeOriginalWidth - worldDeltaX);
-                  const widthDelta = this.resizeOriginalWidth - newWidth;
-                  textbox.x = this.textboxOriginalX + widthDelta;
-                  textbox.width = newWidth;
-                }
-                
-                // Vertical resizing
-                if (resizeHandle.includes('s')) {
-                  textbox.height = Math.max(30, this.resizeOriginalHeight + worldDeltaY);
-                } else if (resizeHandle.includes('n')) {
-                  const newHeight = Math.max(30, this.resizeOriginalHeight - worldDeltaY);
-                  const heightDelta = this.resizeOriginalHeight - newHeight;
-                  textbox.y = this.textboxOriginalY + heightDelta;
-                  textbox.height = newHeight;
+                if (e.altKey) {
+                  // Always use the dimensions captured at drag start. This lets Alt
+                  // lock the original ratio even when it is pressed partway through a drag.
+                  const ratio = this.resizeOriginalWidth / this.resizeOriginalHeight;
+                  const horizontalChange = resizeHandle.includes('e') ? worldDeltaX : resizeHandle.includes('w') ? -worldDeltaX : 0;
+                  const verticalChange = resizeHandle.includes('s') ? worldDeltaY : resizeHandle.includes('n') ? -worldDeltaY : 0;
+                  const useHorizontal = !resizeHandle.match(/[ns]/) || (resizeHandle.match(/[ew]/) && Math.abs(horizontalChange / ratio) >= Math.abs(verticalChange));
+                  const width = useHorizontal
+                    ? Math.max(50, this.resizeOriginalWidth + horizontalChange)
+                    : Math.max(50, (this.resizeOriginalHeight + verticalChange) * ratio);
+                  const height = Math.max(30, width / ratio);
+                  textbox.width = width;
+                  textbox.height = height;
+                  textbox.x = resizeHandle.includes('w') ? this.textboxOriginalX + this.resizeOriginalWidth - width : this.textboxOriginalX;
+                  textbox.y = resizeHandle.includes('n') ? this.textboxOriginalY + this.resizeOriginalHeight - height : this.textboxOriginalY;
+                } else {
+                  // Freeform resize when Alt is not held.
+                  if (resizeHandle.includes('e')) {
+                    textbox.width = Math.max(50, this.resizeOriginalWidth + worldDeltaX);
+                  } else if (resizeHandle.includes('w')) {
+                    const newWidth = Math.max(50, this.resizeOriginalWidth - worldDeltaX);
+                    textbox.x = this.textboxOriginalX + this.resizeOriginalWidth - newWidth;
+                    textbox.width = newWidth;
+                  }
+                  if (resizeHandle.includes('s')) {
+                    textbox.height = Math.max(30, this.resizeOriginalHeight + worldDeltaY);
+                  } else if (resizeHandle.includes('n')) {
+                    const newHeight = Math.max(30, this.resizeOriginalHeight - worldDeltaY);
+                    textbox.y = this.textboxOriginalY + this.resizeOriginalHeight - newHeight;
+                    textbox.height = newHeight;
+                  }
                 }
                 this.render();
               }
