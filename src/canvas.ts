@@ -743,6 +743,13 @@ export class TimelineCanvas {
         // Check if clicking on draggable arc title (in arc mode)
         const draggableArc = this.isDraggableArcElement(mouseX, mouseY);
         if (draggableArc) {
+          const arcChapterIds = this.getDisplayedArcChapterIds(draggableArc.timelineId, draggableArc.arcId, mouseX);
+          if (!e.shiftKey && !e.metaKey && !e.ctrlKey) this.clearSelection();
+          for (const chapterId of arcChapterIds) {
+            if (e.metaKey || e.ctrlKey) this.selectedChapterIds.delete(chapterId);
+            else this.selectedChapterIds.add(chapterId);
+          }
+          this.render();
           // Store pending drag info
           this.pendingDragArcId = draggableArc.arcId;
           this.pendingDragArcTimelineId = draggableArc.timelineId;
@@ -2070,6 +2077,23 @@ export class TimelineCanvas {
     while (start > 0 && this.selectedChapterIds.has(chapters[start - 1].id)) start--;
     while (end < chapters.length - 1 && this.selectedChapterIds.has(chapters[end + 1].id)) end++;
     return chapters.slice(start, end + 1).filter(chapter => this.selectedChapterIds.has(chapter.id)).map(chapter => chapter.id);
+  }
+
+  /** Return the one displayed, contiguous arc run whose title was clicked. */
+  private getDisplayedArcChapterIds(timelineId: string, arcId: string, mouseX: number): string[] {
+    const timeline = this.timelines.find(candidate => candidate.id === timelineId);
+    if (!timeline) return [];
+    const groups = groupTimelineChaptersByArc(timeline.chapters ?? []);
+    const matching = groups.filter(group => group.arcId === arcId && group.chapters.length);
+    if (!matching.length) return [];
+    const screenStart = timeline.x * this.zoom + this.offsetX;
+    const segment = this.gridSize * this.zoom;
+    const group = matching.reduce((closest, candidate) => {
+      const center = screenStart + (candidate.chapters[0].x + candidate.chapters[candidate.chapters.length - 1].x + candidate.chapters[candidate.chapters.length - 1].width) * segment / 2;
+      const closestCenter = screenStart + (closest.chapters[0].x + closest.chapters[closest.chapters.length - 1].x + closest.chapters[closest.chapters.length - 1].width) * segment / 2;
+      return Math.abs(mouseX - center) < Math.abs(mouseX - closestCenter) ? candidate : closest;
+    });
+    return group.chapters.filter(chapter => chapter.title !== 'Head' && chapter.title !== 'Tail').map(chapter => chapter.id);
   }
 
   private drawTextboxShapes(): void {

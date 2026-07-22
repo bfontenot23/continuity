@@ -23,6 +23,7 @@
 - Repeated clicks also cycle through overlapping free lines without affecting endpoint editing.
 - Overlapping branches now participate in repeat-click selection cycling while preserving their click-priority over chapters.
 - Dragging a selected timeline, including one selected through its head or tail, now moves every selected timeline together in one undoable action.
+- Clicking an arc title now selects only the contiguous on-canvas arc segment represented by that title, including for non-continuous arcs.
 - Branch and chapter placement on an empty, valid grid location can create a new timeline automatically.
 
 ## Improvements
