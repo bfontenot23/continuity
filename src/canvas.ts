@@ -30,6 +30,13 @@ export interface TimelineChapter {
   arcId?: string; // Arc this chapter belongs to
 }
 
+export interface CanvasSelectionDeletion {
+  chapterIds: string[];
+  branchIds: string[];
+  textboxIds: string[];
+  lineIds: string[];
+}
+
 export class TimelineCanvas {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -184,6 +191,7 @@ export class TimelineCanvas {
   private onAddImage: ((x: number, y: number) => void) | null = null;
   private onDeleteTextboxes: ((ids: string[]) => void) | null = null;
   private onDuplicateTextboxes: ((textboxes: Textbox[]) => void) | null = null;
+  private onDeleteSelection: ((selection: CanvasSelectionDeletion) => void) | null = null;
   private imageCache = new Map<string, HTMLImageElement>();
   private onAddLine: ((gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
@@ -312,8 +320,10 @@ export class TimelineCanvas {
       if (modifier && e.key.toLowerCase() === 'v' && this.textboxClipboard.length) {
         e.preventDefault(); const copies = this.textboxClipboard.map(textbox => ({ ...textbox, id: `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`, x: textbox.x + 20, y: textbox.y + 20 })); this.selectedTextboxIds = new Set(copies.map(copy => copy.id)); this.onDuplicateTextboxes?.(copies); return;
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedTextboxIds.size) {
-        e.preventDefault(); this.onDeleteTextboxes?.([...this.selectedTextboxIds]); this.selectedTextboxIds.clear(); this.render();
+      if ((e.key === 'Delete' || e.key === 'Backspace') && this.hasSelection()) {
+        e.preventDefault();
+        this.onDeleteSelection?.({ chapterIds: [...this.selectedChapterIds], branchIds: [...this.selectedBranchIds], textboxIds: [...this.selectedTextboxIds], lineIds: [...this.selectedLineIds] });
+        this.clearSelection(); this.render();
       }
     });
 
@@ -1585,6 +1595,10 @@ export class TimelineCanvas {
     this.onDuplicateTextboxes = onDuplicate;
   }
 
+  setOnSelectionDelete(callback: (selection: CanvasSelectionDeletion) => void): void {
+    this.onDeleteSelection = callback;
+  }
+
   setOnEditTextbox(callback: (textboxId: string) => void): void {
     this.onEditTextbox = callback;
   }
@@ -1956,6 +1970,10 @@ export class TimelineCanvas {
     this.selectedLineIds.clear();
     this.selectedTextboxIds.clear();
     this.selectedTimelineIds.clear();
+  }
+
+  private hasSelection(): boolean {
+    return this.selectedChapterIds.size > 0 || this.selectedBranchIds.size > 0 || this.selectedLineIds.size > 0 || this.selectedTextboxIds.size > 0 || this.selectedTimelineIds.size > 0;
   }
 
   /** A plain click starts a new selection; modifiers alter the existing group. */

@@ -13,6 +13,7 @@
 - Added Shift-drag marquee selection for chapters and floating elements.
 - Added direct branch selection with modifier-key multi-select and a blue selection highlight.
 - Expanded canvas selection feedback to timelines and lines, with Ctrl/Cmd+A support across canvas elements and Ctrl/Cmd-drag removal from chapter, floating-element, and line marquee selections.
+- Delete and Backspace now remove mixed chapter, branch, line, textbox, shape, and image selections as a single undoable action.
 - Branch and chapter placement on an empty, valid grid location can create a new timeline automatically.
 
 ## Improvements

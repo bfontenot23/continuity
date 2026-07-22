@@ -17,6 +17,13 @@ export interface AppState {
   selectedLineId: string | null;
 }
 
+export interface CanvasDeletion {
+  chapterIds: string[];
+  branchIds: string[];
+  textboxIds: string[];
+  lineIds: string[];
+}
+
 export class AppStateManager {
   private state: AppState;
   private listeners: Set<StateChangeListener> = new Set();
@@ -794,6 +801,34 @@ export class AppStateManager {
       this.state.currentProject.modified = Date.now();
       this.notifyListeners();
     }
+  }
+
+  /** Remove a mixed canvas selection as one undoable operation. */
+  deleteCanvasSelection(selection: CanvasDeletion): void {
+    const project = this.state.currentProject;
+    if (!project) return;
+    const chapterIds = new Set(selection.chapterIds);
+    const branchIds = new Set(selection.branchIds);
+    const textboxIds = new Set(selection.textboxIds);
+    const lineIds = new Set(selection.lineIds);
+    if (!chapterIds.size && !branchIds.size && !textboxIds.size && !lineIds.size) return;
+
+    for (const continuity of project.continuities) {
+      for (const chapterId of chapterIds) {
+        if (continuity.chapters.some(chapter => chapter.id === chapterId)) this.updateBranchReferencesAfterChapterDeletion(continuity, chapterId);
+      }
+      continuity.chapters = continuity.chapters.filter(chapter => !chapterIds.has(chapter.id));
+      continuity.branches = (continuity.branches || []).filter(branch => !branchIds.has(branch.id));
+      this.recalculateBranchPositions(continuity);
+    }
+    project.textboxes = (project.textboxes || []).filter(textbox => !textboxIds.has(textbox.id));
+    project.lines = (project.lines || []).filter(line => !lineIds.has(line.id));
+    if (this.state.selectedChapterId && chapterIds.has(this.state.selectedChapterId)) this.state.selectedChapterId = null;
+    if (this.state.selectedBranchId && branchIds.has(this.state.selectedBranchId)) this.state.selectedBranchId = null;
+    if (this.state.selectedTextboxId && textboxIds.has(this.state.selectedTextboxId)) this.state.selectedTextboxId = null;
+    if (this.state.selectedLineId && lineIds.has(this.state.selectedLineId)) this.state.selectedLineId = null;
+    project.modified = Date.now();
+    this.notifyListeners();
   }
 
   subscribe(listener: StateChangeListener): () => void {

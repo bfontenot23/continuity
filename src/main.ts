@@ -271,6 +271,7 @@ function initializeApp() {
       ids => ids.forEach(id => stateManager.removeTextbox(id)),
       textboxes => textboxes.forEach(textbox => stateManager.addTextbox(textbox)),
     );
+    canvas.setOnSelectionDelete(selection => stateManager.deleteCanvasSelection(selection));
     canvas.setOnAddChapterToNewTimeline((x: number, y: number) => {
       const continuity = createTimelineAt(x, y);
       if (!continuity) return;
