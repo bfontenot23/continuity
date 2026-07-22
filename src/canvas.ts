@@ -668,7 +668,7 @@ export class TimelineCanvas {
           }
         }
 
-        const clickedBranchId = this.getClickedBranch(mouseX, mouseY);
+        const clickedBranchId = this.getClickedBranch(mouseX, mouseY, true);
         if (clickedBranchId) {
           if (e.shiftKey) this.selectedBranchIds.add(clickedBranchId);
           else if (e.metaKey || e.ctrlKey) this.selectedBranchIds.delete(clickedBranchId);
@@ -2862,8 +2862,9 @@ export class TimelineCanvas {
   /**
    * Detect if user clicked on a branch endpoint (for opening branch edit)
    */
-  private getClickedBranch(mouseX: number, mouseY: number): string | null {
+  private getClickedBranch(mouseX: number, mouseY: number, cycle = false): string | null {
     const hitRadius = 15; // Pixels to detect click on branch curve or endpoint
+    const candidates: string[] = [];
     
     for (const branch of this.branches) {
       // Find the start and end timelines
@@ -2910,12 +2911,18 @@ export class TimelineCanvas {
         
         // Early exit if we found a close point
         if (minDist <= hitRadius) {
-          return branch.id;
+          candidates.push(branch.id);
+          break;
         }
       }
     }
-    
-    return null;
+    if (!candidates.length) return null;
+    if (!cycle || candidates.length === 1) return candidates[0];
+    const key = `branch:${candidates.join('|')}`;
+    const sameSpot = this.selectionCycle && this.selectionCycle.key === key && Math.abs(this.selectionCycle.x - mouseX) < 6 && Math.abs(this.selectionCycle.y - mouseY) < 6;
+    const index = sameSpot ? (this.selectionCycle!.index + 1) % candidates.length : 0;
+    this.selectionCycle = { key, x: mouseX, y: mouseY, index };
+    return candidates[index];
   }
 
   private getClickedTimelineOrChapter(mouseX: number, mouseY: number): { type: string; id: string; timelineId?: string; title?: string } | null {

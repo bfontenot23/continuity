@@ -21,6 +21,7 @@
 - Adjacent (or normalized non-adjacent) chapter selections now support copy/cut/paste into an existing timeline insertion point or a valid new-timeline location; pasted branches are intentionally excluded.
 - Repeated clicks on overlapping textboxes, shapes, or images now cycle through the stack while retaining Shift-add and Ctrl/Cmd-remove selection behavior.
 - Repeated clicks also cycle through overlapping free lines without affecting endpoint editing.
+- Overlapping branches now participate in repeat-click selection cycling while preserving their click-priority over chapters.
 - Branch and chapter placement on an empty, valid grid location can create a new timeline automatically.
 
 ## Improvements
