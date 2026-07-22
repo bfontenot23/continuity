@@ -95,6 +95,9 @@ export class AppStateManager {
       const continuity = this.state.currentProject.continuities.find(c => c.id === continuityId);
       if (continuity) {
         Object.assign(continuity, updates);
+        if ('headGridLength' in updates) {
+          this.recalculateBranchPositions(continuity);
+        }
         this.state.currentProject.modified = Date.now();
         this.notifyListeners();
       }
@@ -107,6 +110,9 @@ export class AppStateManager {
     if (!continuity) return;
 
     Object.assign(continuity, updates);
+    if ('headGridLength' in updates) {
+      this.recalculateBranchPositions(continuity);
+    }
     this.state.currentProject!.modified = Date.now();
     this.persistProject();
   }
@@ -260,7 +266,7 @@ export class AppStateManager {
   private recalculateBranchPositions(continuity: Continuity): void {
     if (!this.state.currentProject) return;
 
-    const positions = getChapterPositions(continuity.chapters);
+    const positions = getChapterPositions(continuity.chapters, continuity.headGridLength);
 
     // Update ALL branches in ALL continuities that reference this continuity
     this.state.currentProject.continuities.forEach(cont => {

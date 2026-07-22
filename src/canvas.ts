@@ -1234,7 +1234,7 @@ export class TimelineCanvas {
     return this.menu.isClickingButton(mouseX, mouseY);
   }
 
-  addTimeline(id: string, name: string = 'Timeline', x?: number, y?: number): void {
+  addTimeline(id: string, name: string = 'Timeline', x?: number, y?: number, headGridLength: number = 1, tailGridLength: number = 1): void {
     // Use provided positions, default to 0 if not provided (for backwards compatibility)
     const xPosition = x !== undefined ? x : 0;
     const yPosition = y !== undefined ? y : 0;
@@ -1244,14 +1244,14 @@ export class TimelineCanvas {
       id: `${id}-head`,
       title: 'Head',
       x: 0,
-      width: 1
+      width: Math.max(1, headGridLength)
     };
     
     const tailChapter: TimelineChapter = {
       id: `${id}-tail`,
       title: 'Tail',
-      x: 1,
-      width: 1
+      x: Math.max(1, headGridLength),
+      width: Math.max(1, tailGridLength)
     };
     
     this.timelines.push({
@@ -1281,6 +1281,16 @@ export class TimelineCanvas {
     if (!timeline) return;
 
     timeline.name = name;
+    this.render();
+  }
+
+  updateTimelineEndpointLengths(id: string, headGridLength: number = 1, tailGridLength: number = 1): void {
+    const timeline = this.timelines.find(candidate => candidate.id === id);
+    if (!timeline?.chapters) return;
+    const head = timeline.chapters.find(chapter => chapter.title === 'Head');
+    const tail = timeline.chapters.find(chapter => chapter.title === 'Tail');
+    if (head) head.width = Math.max(1, headGridLength);
+    if (tail) tail.width = Math.max(1, tailGridLength);
     this.render();
   }
 
@@ -1598,7 +1608,8 @@ export class TimelineCanvas {
     // Convert state chapters to visual chapters
     // Sort by timestamp to maintain order
     const sortedChapters = sortChapters(chapters);
-    const positions = getChapterPositions(sortedChapters);
+    const headGridLength = headChapter?.width ?? 1;
+    const positions = getChapterPositions(sortedChapters, headGridLength);
 
     sortedChapters.forEach((chapter) => {
       const position = positions.get(chapter.id)!;

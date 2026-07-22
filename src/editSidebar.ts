@@ -9,6 +9,8 @@ export interface SidebarData {
   title?: string;
   description?: string;
   gridLength?: number;
+  headGridLength?: number;
+  tailGridLength?: number;
   arcId?: string;
   lineStyle?: string;
   startEndpointStyle?: 'dot' | 'arrow' | 'none';
@@ -113,6 +115,30 @@ export function createEditSidebar(
         notifyAfterFieldBlur(() => stateManager.updateContinuity(data.id, { name: nameInput.value }), true);
       }
     });
+
+    const addEndpointLengthInput = (label: string, id: string, value: number | undefined, field: 'headGridLength' | 'tailGridLength') => {
+      const group = document.createElement('div');
+      group.className = 'form-group';
+      const inputLabel = document.createElement('label');
+      inputLabel.htmlFor = id;
+      inputLabel.textContent = label;
+      const input = document.createElement('input');
+      input.id = id;
+      input.type = 'number';
+      input.min = '1';
+      input.step = '1';
+      input.value = String(Math.max(1, value ?? 1));
+      input.title = 'Number of grid units reserved at this endpoint';
+      input.addEventListener('change', () => {
+        const next = Math.max(1, Number.parseInt(input.value, 10) || 1);
+        input.value = String(next);
+        stateManager.updateContinuity(data.id, { [field]: next });
+      });
+      group.append(inputLabel, input);
+      content.appendChild(group);
+    };
+    addEndpointLengthInput('Head Grid Length', 'timeline-head-gridlength-input', data.headGridLength, 'headGridLength');
+    addEndpointLengthInput('Tail Grid Length', 'timeline-tail-gridlength-input', data.tailGridLength, 'tailGridLength');
 
     // Arc Management Section
     if (continuity) {

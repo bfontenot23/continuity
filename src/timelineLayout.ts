@@ -24,9 +24,9 @@ export function getChapterWidth(chapter: Chapter): number {
     : Math.max(1, Math.ceil(chapter.title.length / CHAPTER_TITLE_CHARACTERS_PER_GRID_UNIT));
 }
 
-export function getChapterPositions(chapters: readonly Chapter[]): Map<string, ChapterPosition> {
+export function getChapterPositions(chapters: readonly Chapter[], headGridLength: number = TIMELINE_HEAD_WIDTH): Map<string, ChapterPosition> {
   const positions = new Map<string, ChapterPosition>();
-  let x = TIMELINE_HEAD_WIDTH;
+  let x = Math.max(1, headGridLength);
 
   for (const chapter of sortChapters(chapters)) {
     const width = getChapterWidth(chapter);

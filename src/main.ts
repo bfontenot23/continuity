@@ -64,6 +64,8 @@ function initializeApp() {
 
     if (type === 'timeline' && continuity) {
       canvasInstance.updateTimelineName(continuity.id, continuity.name);
+      canvasInstance.updateTimelineEndpointLengths(continuity.id, continuity.headGridLength, continuity.tailGridLength);
+      canvasInstance.updateTimelineChaptersWithArcs(continuity.id, continuity.chapters, continuity.arcs);
     } else if (type === 'chapter' && continuity) {
       canvasInstance.updateTimelineChaptersWithArcs(continuity.id, continuity.chapters, continuity.arcs);
     } else {
@@ -78,7 +80,7 @@ function initializeApp() {
     const continuity = state.currentProject.continuities.find(c => c.id === timelineId);
     if (!continuity) return;
 
-    openEditSidebar('timeline', { id: timelineId, name: continuity.name }, continuity, autoFocus);
+    openEditSidebar('timeline', { id: timelineId, name: continuity.name, headGridLength: continuity.headGridLength, tailGridLength: continuity.tailGridLength }, continuity, autoFocus);
   }
 
   function showChapterEditSidebar(chapterId: string, autoFocus: boolean = false) {
@@ -217,7 +219,7 @@ function initializeApp() {
     }
     // Add existing continuities to canvas
     currentProject.continuities.forEach((continuity) => {
-      canvas.addTimeline(continuity.id, continuity.name, continuity.x, continuity.y);
+      canvas.addTimeline(continuity.id, continuity.name, continuity.x, continuity.y, continuity.headGridLength, continuity.tailGridLength);
       // Sync chapters and arcs from state to canvas visualization
       canvas.updateTimelineChaptersWithArcs(continuity.id, continuity.chapters, continuity.arcs);
     });

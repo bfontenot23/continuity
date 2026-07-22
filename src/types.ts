@@ -67,6 +67,9 @@ export interface Continuity {
   color?: string; // For timeline visualization
   x?: number; // Timeline X position in world coordinates
   y?: number; // Timeline Y position in world coordinates
+  /** Grid units reserved at the start/end of the timeline. */
+  headGridLength?: number;
+  tailGridLength?: number;
   chapters: Chapter[];
   arcs: Arc[];
   branches: Branch[]; // Branches originating from or ending at this timeline
@@ -105,6 +108,8 @@ export function createContinuity(name: string): Continuity {
     chapters: [],
     arcs: [],
     branches: [],
+    headGridLength: 1,
+    tailGridLength: 1,
   };
 }
 
