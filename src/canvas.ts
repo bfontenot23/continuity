@@ -2258,7 +2258,7 @@ export class TimelineCanvas {
       
       // Draw curved line using S-curve (cubic bezier)
       this.ctx.strokeStyle = '#000000';
-      this.ctx.lineWidth = 3;
+      this.ctx.lineWidth = Math.max(1, branch.lineWidth ?? 3);
       
       // Apply line style (default solid)
       if (branch.lineStyle === 'dashed') {
@@ -2753,8 +2753,6 @@ export class TimelineCanvas {
   }
 
   private getClickedLine(mouseX: number, mouseY: number): string | null {
-    const hitRadius = 8; // Pixels
-    
     for (const line of this.lines) {
       const screenX1 = line.gridX1 * this.gridSize * this.zoom + this.offsetX;
       const screenY1 = line.gridY1 * this.gridSize * this.zoom + this.offsetY;
@@ -2763,7 +2761,7 @@ export class TimelineCanvas {
 
       // Check distance from point to line segment
       const distance = distanceToLineSegment(mouseX, mouseY, screenX1, screenY1, screenX2, screenY2);
-      if (distance <= hitRadius) {
+      if (distance <= Math.max(8, (line.lineWidth ?? 2) / 2 + 4)) {
         return line.id;
       }
     }

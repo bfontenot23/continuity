@@ -26,7 +26,7 @@ export function renderLines(
     const endX = line.gridX2 * viewport.gridSize * viewport.zoom + viewport.offsetX;
     const endY = line.gridY2 * viewport.gridSize * viewport.zoom + viewport.offsetY;
     ctx.strokeStyle = '#666666';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(1, line.lineWidth ?? 2);
     ctx.setLineDash(line.lineStyle === 'dashed' ? [5, 5] : []);
     ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke();
     ctx.setLineDash([]);

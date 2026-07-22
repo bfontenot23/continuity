@@ -13,6 +13,7 @@ export interface SidebarData {
   tailGridLength?: number;
   arcId?: string;
   lineStyle?: string;
+  lineWidth?: number;
   startEndpointStyle?: 'dot' | 'arrow' | 'none';
   endEndpointStyle?: 'dot' | 'arrow' | 'none';
   startChapterId?: string;
@@ -782,6 +783,8 @@ export function createEditSidebar(
       stateManager.updateBranch(data.id, { lineStyle: lineStyleSelect.value as 'solid' | 'dashed' });
     });
 
+    addLineWidthInput(content, data.lineWidth ?? 3, 'branch-linewidth-input', value => stateManager.updateBranch(data.id, { lineWidth: value }));
+
     // Start endpoint style
     const branchStartEndpointGroup = document.createElement('div');
     branchStartEndpointGroup.className = 'form-group';
@@ -882,6 +885,8 @@ export function createEditSidebar(
     lineStyleSelect.addEventListener('change', () => {
       stateManager.updateLine(data.id, { lineStyle: lineStyleSelect.value as 'solid' | 'dashed' });
     });
+
+    addLineWidthInput(content, data.lineWidth, 'line-linewidth-input', value => stateManager.updateLine(data.id, { lineWidth: value }));
 
     // Start endpoint style
     const startEndpointGroup = document.createElement('div');
@@ -1014,4 +1019,26 @@ export function createEditSidebar(
   }
 
   return sidebar;
+}
+
+function addLineWidthInput(content: HTMLElement, value: number | undefined, id: string, onChange: (value: number) => void): void {
+  const group = document.createElement('div');
+  group.className = 'form-group';
+  const label = document.createElement('label');
+  label.htmlFor = id;
+  label.textContent = 'Line Width (px)';
+  const input = document.createElement('input');
+  input.id = id;
+  input.type = 'number';
+  input.min = '1';
+  input.max = '40';
+  input.step = '1';
+  input.value = String(Math.min(40, Math.max(1, value ?? 2)));
+  input.addEventListener('change', () => {
+    const width = Math.min(40, Math.max(1, Number.parseInt(input.value, 10) || 1));
+    input.value = String(width);
+    onChange(width);
+  });
+  group.append(label, input);
+  content.appendChild(group);
 }

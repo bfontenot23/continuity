@@ -25,6 +25,7 @@ export interface Branch {
   id: string;
   description?: string;
   lineStyle?: 'solid' | 'dashed'; // Default: solid
+  lineWidth?: number; // Stroke width in screen pixels (default: 3)
   startEndpointStyle?: 'dot' | 'arrow' | 'none'; // Default: dot
   endEndpointStyle?: 'dot' | 'arrow' | 'none'; // Default: dot
   // Start point: reference to a continuity and chapter this branch starts from
@@ -56,6 +57,7 @@ export interface Line {
   gridX2: number; // Ending grid X position (locked to grid)
   gridY2: number; // Ending grid Y position (locked to grid)
   lineStyle?: 'solid' | 'dashed'; // Default: solid
+  lineWidth?: number; // Stroke width in screen pixels (default: 2)
   startEndpointStyle?: 'dot' | 'arrow' | 'none'; // Default: dot
   endEndpointStyle?: 'dot' | 'arrow' | 'none'; // Default: dot
 }
@@ -188,6 +190,7 @@ export function createBranch(
     endContinuityId,
     endPosition,
     lineStyle: 'solid',
+    lineWidth: 3,
     startEndpointStyle: 'none',
     endEndpointStyle: 'arrow',
   };
@@ -226,6 +229,7 @@ export function createLine(
     gridX2,
     gridY2,
     lineStyle: 'solid',
+    lineWidth: 2,
     startEndpointStyle: 'none',
     endEndpointStyle: 'none',
   };

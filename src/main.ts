@@ -108,6 +108,7 @@ function initializeApp() {
 
     openEditSidebar('branch', {
       id: branchId, description: branch.description, lineStyle: branch.lineStyle,
+      lineWidth: branch.lineWidth,
       startEndpointStyle: branch.startEndpointStyle, endEndpointStyle: branch.endEndpointStyle,
       startChapterId: branch.startChapterId, endChapterId: branch.endChapterId,
       startContinuityId: branch.startContinuityId, endContinuityId: branch.endContinuityId,
@@ -489,6 +490,7 @@ function initializeApp() {
 
     openEditSidebar('line', {
       id: lineId, lineStyle: line.lineStyle,
+      lineWidth: line.lineWidth,
       startEndpointStyle: line.startEndpointStyle, endEndpointStyle: line.endEndpointStyle,
     }, null, autoFocus);
   }
