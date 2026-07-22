@@ -55,6 +55,7 @@ export class TimelineCanvas {
   private touchStartY = 0;
   private touchPanStart: { x: number; y: number; offsetX: number; offsetY: number; distance: number; zoom: number } | null = null;
   private lastMultiTouchTap: { fingers: number; time: number } | null = null;
+  private doubleTapInterval = 400;
   private onGestureUndo: (() => void) | null = null;
   private onGestureRedo: (() => void) | null = null;
   
@@ -365,7 +366,7 @@ export class TimelineCanvas {
       const fingers = e.changedTouches.length + e.touches.length;
       if (fingers >= 2) {
         const now = Date.now();
-        if (this.lastMultiTouchTap?.fingers === fingers && now - this.lastMultiTouchTap.time <= 400) {
+        if (this.lastMultiTouchTap?.fingers === fingers && now - this.lastMultiTouchTap.time <= this.doubleTapInterval) {
           if (fingers === 2) this.onGestureUndo?.();
           if (fingers === 3) this.onGestureRedo?.();
           this.lastMultiTouchTap = null;
@@ -1512,6 +1513,10 @@ export class TimelineCanvas {
   setOnHistoryGestures(undo: () => void, redo: () => void): void {
     this.onGestureUndo = undo;
     this.onGestureRedo = redo;
+  }
+
+  setDoubleTapSpeed(speed: 'faster' | 'fast' | 'slow' | undefined): void {
+    this.doubleTapInterval = speed === 'faster' ? 250 : speed === 'slow' ? 600 : 400;
   }
 
   setOnTextboxSelectionActions(onDelete: (ids: string[]) => void, onDuplicate: (textboxes: Textbox[]) => void): void {

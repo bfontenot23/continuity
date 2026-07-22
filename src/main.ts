@@ -187,10 +187,11 @@ function initializeApp() {
 
       const modal = UIComponents.createProjectSettingsModal(
         state.currentProject,
-        (title: string, description: string) => {
+        (title: string, description: string, doubleTapSpeed: 'faster' | 'fast' | 'slow') => {
           stateManager.updateProject({
             title,
-            description
+            description,
+            doubleTapSpeed,
           });
         }
       );
@@ -218,6 +219,7 @@ function initializeApp() {
     // Initialize canvas editor
     const canvas = new TimelineCanvas(canvasContainer);
     canvasInstance = canvas;
+    canvas.setDoubleTapSpeed(currentProject.doubleTapSpeed);
     // Restore previous viewport to avoid any snapping
     if (lastViewport) {
       canvas.setViewport(lastViewport);

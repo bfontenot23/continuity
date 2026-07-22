@@ -803,7 +803,7 @@ export class UIComponents {
     return modal;
   }
 
-  static createProjectSettingsModal(project: Project, onSave: (title: string, description: string) => void): HTMLElement {
+  static createProjectSettingsModal(project: Project, onSave: (title: string, description: string, doubleTapSpeed: 'faster' | 'fast' | 'slow') => void): HTMLElement {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
 
@@ -826,6 +826,14 @@ export class UIComponents {
             <span id="project-title-error" class="form-error" style="display: none; color: #ff6b6b; font-size: 0.85rem; margin-top: 0.25rem;"></span>
           </div>
           <div class="form-group">
+            <label for="double-tap-speed">Double Tap Speed</label>
+            <select id="double-tap-speed" name="double-tap-speed">
+              <option value="faster" ${project.doubleTapSpeed === 'faster' ? 'selected' : ''}>Faster</option>
+              <option value="fast" ${!project.doubleTapSpeed || project.doubleTapSpeed === 'fast' ? 'selected' : ''}>Fast</option>
+              <option value="slow" ${project.doubleTapSpeed === 'slow' ? 'selected' : ''}>Slow</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label for="project-description">Project Description</label>
             <textarea 
               id="project-description" 
@@ -845,6 +853,7 @@ export class UIComponents {
     const form = modal.querySelector('#settings-form') as HTMLFormElement;
     const titleInput = modal.querySelector('#project-title') as HTMLInputElement;
     const descInput = modal.querySelector('#project-description') as HTMLTextAreaElement;
+    const doubleTapInput = modal.querySelector('#double-tap-speed') as HTMLSelectElement;
     const titleError = modal.querySelector('#project-title-error') as HTMLSpanElement;
     const cancelBtn = modal.querySelector('#modal-cancel') as HTMLButtonElement;
 
@@ -866,7 +875,7 @@ export class UIComponents {
       titleError.style.display = 'none';
       const description = descInput.value.trim();
       closeModal();
-      onSave(title, description);
+      onSave(title, description, doubleTapInput.value as 'faster' | 'fast' | 'slow');
     });
 
     cancelBtn.addEventListener('click', closeModal);

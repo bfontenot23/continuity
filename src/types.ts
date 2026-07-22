@@ -92,6 +92,7 @@ export interface Project {
   continuities: Continuity[];
   textboxes: Textbox[]; // Free-floating textboxes with markdown support
   lines: Line[]; // Free-floating lines with grid-locked positions
+  doubleTapSpeed?: 'faster' | 'fast' | 'slow';
 }
 
 // Helper functions for working with these models
@@ -105,6 +106,7 @@ export function createProject(title: string): Project {
     continuities: [],
     textboxes: [],
     lines: [],
+    doubleTapSpeed: 'fast',
   };
 }
 
