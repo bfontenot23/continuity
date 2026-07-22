@@ -37,6 +37,11 @@ export interface CanvasSelectionDeletion {
   lineIds: string[];
 }
 
+export interface CanvasElements {
+  textboxes: Textbox[];
+  lines: Line[];
+}
+
 export class TimelineCanvas {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -126,7 +131,7 @@ export class TimelineCanvas {
   // Textboxes
   private textboxes: Textbox[] = [];
   private selectedTextboxIds = new Set<string>();
-  private textboxClipboard: Textbox[] = [];
+  private elementClipboard: CanvasElements = { textboxes: [], lines: [] };
   private textboxOverlayContainer: HTMLElement | null = null;
   private textboxRenderer: TextboxOverlayRenderer;
   private isDraggingTextbox: boolean = false;
@@ -189,9 +194,8 @@ export class TimelineCanvas {
   private onAddTextbox: ((x: number, y: number) => void) | null = null;
   private onAddShape: ((x: number, y: number) => void) | null = null;
   private onAddImage: ((x: number, y: number) => void) | null = null;
-  private onDeleteTextboxes: ((ids: string[]) => void) | null = null;
-  private onDuplicateTextboxes: ((textboxes: Textbox[]) => void) | null = null;
   private onDeleteSelection: ((selection: CanvasSelectionDeletion) => void) | null = null;
+  private onPasteSelection: ((elements: CanvasElements) => void) | null = null;
   private imageCache = new Map<string, HTMLImageElement>();
   private onAddLine: ((gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
@@ -311,14 +315,32 @@ export class TimelineCanvas {
         this.selectedTimelineIds = new Set(this.timelines.map(timeline => timeline.id));
         this.render(); return;
       }
-      if (modifier && e.key.toLowerCase() === 'c' && this.selectedTextboxIds.size) {
-        e.preventDefault(); this.textboxClipboard = this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })); return;
+      if (modifier && e.key.toLowerCase() === 'c' && this.hasSelection()) {
+        e.preventDefault();
+        this.elementClipboard = {
+          textboxes: this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })),
+          lines: this.lines.filter(line => this.selectedLineIds.has(line.id)).map(line => ({ ...line })),
+        };
+        return;
       }
-      if (modifier && e.key.toLowerCase() === 'x' && this.selectedTextboxIds.size) {
-        e.preventDefault(); this.textboxClipboard = this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })); this.onDeleteTextboxes?.([...this.selectedTextboxIds]); this.selectedTextboxIds.clear(); return;
+      if (modifier && e.key.toLowerCase() === 'x' && this.hasSelection()) {
+        e.preventDefault();
+        this.elementClipboard = {
+          textboxes: this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })),
+          lines: this.lines.filter(line => this.selectedLineIds.has(line.id)).map(line => ({ ...line })),
+        };
+        this.onDeleteSelection?.({ chapterIds: [...this.selectedChapterIds], branchIds: [...this.selectedBranchIds], textboxIds: [...this.selectedTextboxIds], lineIds: [...this.selectedLineIds] });
+        this.clearSelection(); return;
       }
-      if (modifier && e.key.toLowerCase() === 'v' && this.textboxClipboard.length) {
-        e.preventDefault(); const copies = this.textboxClipboard.map(textbox => ({ ...textbox, id: `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`, x: textbox.x + 20, y: textbox.y + 20 })); this.selectedTextboxIds = new Set(copies.map(copy => copy.id)); this.onDuplicateTextboxes?.(copies); return;
+      if (modifier && e.key.toLowerCase() === 'v' && (this.elementClipboard.textboxes.length || this.elementClipboard.lines.length)) {
+        e.preventDefault();
+        const id = () => `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+        const textboxes = this.elementClipboard.textboxes.map(textbox => ({ ...textbox, id: id(), x: textbox.x + 20, y: textbox.y + 20 }));
+        const lines = this.elementClipboard.lines.map(line => ({ ...line, id: id(), gridX1: line.gridX1 + 1, gridY1: line.gridY1 + 1, gridX2: line.gridX2 + 1, gridY2: line.gridY2 + 1 }));
+        this.clearSelection();
+        this.selectedTextboxIds = new Set(textboxes.map(textbox => textbox.id));
+        this.selectedLineIds = new Set(lines.map(line => line.id));
+        this.onPasteSelection?.({ textboxes, lines }); return;
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && this.hasSelection()) {
         e.preventDefault();
@@ -1590,13 +1612,12 @@ export class TimelineCanvas {
     this.doubleTapInterval = speed === 'faster' ? 250 : speed === 'slow' ? 600 : 400;
   }
 
-  setOnTextboxSelectionActions(onDelete: (ids: string[]) => void, onDuplicate: (textboxes: Textbox[]) => void): void {
-    this.onDeleteTextboxes = onDelete;
-    this.onDuplicateTextboxes = onDuplicate;
-  }
-
   setOnSelectionDelete(callback: (selection: CanvasSelectionDeletion) => void): void {
     this.onDeleteSelection = callback;
+  }
+
+  setOnSelectionPaste(callback: (elements: CanvasElements) => void): void {
+    this.onPasteSelection = callback;
   }
 
   setOnEditTextbox(callback: (textboxId: string) => void): void {

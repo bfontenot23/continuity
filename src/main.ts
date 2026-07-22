@@ -267,11 +267,8 @@ function initializeApp() {
     canvas.setOnAddShape((x: number, y: number) => handleAddShape(x, y));
     canvas.setOnAddImage((x: number, y: number) => promptForImage(x, y));
     canvas.setOnHistoryGestures(() => stateManager.undo(), () => stateManager.redo());
-    canvas.setOnTextboxSelectionActions(
-      ids => ids.forEach(id => stateManager.removeTextbox(id)),
-      textboxes => textboxes.forEach(textbox => stateManager.addTextbox(textbox)),
-    );
     canvas.setOnSelectionDelete(selection => stateManager.deleteCanvasSelection(selection));
+    canvas.setOnSelectionPaste(elements => stateManager.addCanvasElements(elements));
     canvas.setOnAddChapterToNewTimeline((x: number, y: number) => {
       const continuity = createTimelineAt(x, y);
       if (!continuity) return;

@@ -24,6 +24,11 @@ export interface CanvasDeletion {
   lineIds: string[];
 }
 
+export interface CanvasElements {
+  textboxes: Textbox[];
+  lines: Line[];
+}
+
 export class AppStateManager {
   private state: AppState;
   private listeners: Set<StateChangeListener> = new Set();
@@ -827,6 +832,16 @@ export class AppStateManager {
     if (this.state.selectedBranchId && branchIds.has(this.state.selectedBranchId)) this.state.selectedBranchId = null;
     if (this.state.selectedTextboxId && textboxIds.has(this.state.selectedTextboxId)) this.state.selectedTextboxId = null;
     if (this.state.selectedLineId && lineIds.has(this.state.selectedLineId)) this.state.selectedLineId = null;
+    project.modified = Date.now();
+    this.notifyListeners();
+  }
+
+  /** Add pasted floating elements as one undoable operation. */
+  addCanvasElements(elements: CanvasElements): void {
+    const project = this.state.currentProject;
+    if (!project || (!elements.textboxes.length && !elements.lines.length)) return;
+    project.textboxes = [...(project.textboxes || []), ...elements.textboxes];
+    project.lines = [...(project.lines || []), ...elements.lines];
     project.modified = Date.now();
     this.notifyListeners();
   }
