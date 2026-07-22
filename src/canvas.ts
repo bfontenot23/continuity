@@ -324,13 +324,17 @@ export class TimelineCanvas {
         return;
       }
       if (modifier && e.key.toLowerCase() === 'x' && this.hasSelection()) {
+        const hasCopyableElements = this.selectedTextboxIds.size > 0 || this.selectedLineIds.size > 0;
+        if (!hasCopyableElements) return;
         e.preventDefault();
         this.elementClipboard = {
           textboxes: this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })),
           lines: this.lines.filter(line => this.selectedLineIds.has(line.id)).map(line => ({ ...line })),
         };
-        this.onDeleteSelection?.({ chapterIds: [...this.selectedChapterIds], branchIds: [...this.selectedBranchIds], textboxIds: [...this.selectedTextboxIds], lineIds: [...this.selectedLineIds] });
-        this.clearSelection(); return;
+        this.onDeleteSelection?.({ chapterIds: [], branchIds: [], textboxIds: [...this.selectedTextboxIds], lineIds: [...this.selectedLineIds] });
+        this.selectedTextboxIds.clear();
+        this.selectedLineIds.clear();
+        this.render(); return;
       }
       if (modifier && e.key.toLowerCase() === 'v' && (this.elementClipboard.textboxes.length || this.elementClipboard.lines.length)) {
         e.preventDefault();
