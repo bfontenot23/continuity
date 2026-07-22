@@ -122,6 +122,7 @@ export class TimelineCanvas {
   private textboxDragStartY: number = 0;
   private textboxOriginalX: number = 0;
   private textboxOriginalY: number = 0;
+  private selectedTextboxDragOrigins = new Map<string, { x: number; y: number }>();
   private isResizingTextbox: boolean = false;
   private resizedTextboxId: string | null = null;
   // @ts-ignore - kept for reference but captured locally in closure now
@@ -766,6 +767,10 @@ export class TimelineCanvas {
             if (textbox) {
               this.textboxOriginalX = textbox.x;
               this.textboxOriginalY = textbox.y;
+              if (!this.selectedTextboxIds.has(textbox.id)) this.selectedTextboxIds = new Set([textbox.id]);
+              this.selectedTextboxDragOrigins = new Map(
+                this.textboxes.filter(item => this.selectedTextboxIds.has(item.id)).map(item => [item.id, { x: item.x, y: item.y }]),
+              );
             }
             
             // Delay drag start to allow double-click detection
@@ -1051,8 +1056,10 @@ export class TimelineCanvas {
           const worldDeltaX = deltaX / this.zoom;
           const worldDeltaY = deltaY / this.zoom;
           
-          textbox.x = this.textboxOriginalX + worldDeltaX;
-          textbox.y = this.textboxOriginalY + worldDeltaY;
+          for (const [id, origin] of this.selectedTextboxDragOrigins) {
+            const selected = this.textboxes.find(item => item.id === id);
+            if (selected) { selected.x = origin.x + worldDeltaX; selected.y = origin.y + worldDeltaY; }
+          }
           this.render();
         }
       } else if (this.isResizingTextbox) {
