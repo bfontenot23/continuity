@@ -670,6 +670,7 @@ export class TimelineCanvas {
 
         const clickedBranchId = this.getClickedBranch(mouseX, mouseY, true);
         if (clickedBranchId) {
+          this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedBranchIds.add(clickedBranchId);
           else if (e.metaKey || e.ctrlKey) this.selectedBranchIds.delete(clickedBranchId);
           else this.selectOnly(this.selectedBranchIds, clickedBranchId);
@@ -679,6 +680,7 @@ export class TimelineCanvas {
 
         const clickedLineId = this.getClickedLine(mouseX, mouseY, true);
         if (clickedLineId) {
+          this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedLineIds.add(clickedLineId);
           else if (e.metaKey || e.ctrlKey) this.selectedLineIds.delete(clickedLineId);
           else this.selectOnly(this.selectedLineIds, clickedLineId);
@@ -689,6 +691,7 @@ export class TimelineCanvas {
         // Use a small delay before starting drag to allow double-click detection
         const draggableElement = this.isDraggableTimelineElement(mouseX, mouseY);
         if (draggableElement?.isDraggable) {
+          this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedTimelineIds.add(draggableElement.timelineId);
           else if (e.metaKey || e.ctrlKey) this.selectedTimelineIds.delete(draggableElement.timelineId);
           else this.selectOnly(this.selectedTimelineIds, draggableElement.timelineId);
@@ -719,6 +722,7 @@ export class TimelineCanvas {
         // Check if clicking on draggable chapter (regular chapters, not Head/Tail)
         const draggableChapter = this.isDraggableChapterElement(mouseX, mouseY);
         if (draggableChapter) {
+          this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedChapterIds.add(draggableChapter.chapterId);
           else if (e.metaKey || e.ctrlKey) this.selectedChapterIds.delete(draggableChapter.chapterId);
           else this.selectOnly(this.selectedChapterIds, draggableChapter.chapterId);
@@ -746,6 +750,7 @@ export class TimelineCanvas {
         // Check if clicking on draggable arc title (in arc mode)
         const draggableArc = this.isDraggableArcElement(mouseX, mouseY);
         if (draggableArc) {
+          this.onBackgroundClick?.();
           const arcChapterIds = this.getDisplayedArcChapterIds(draggableArc.timelineId, draggableArc.arcId, mouseX);
           if (!e.shiftKey && !e.metaKey && !e.ctrlKey) this.clearSelection();
           for (const chapterId of arcChapterIds) {
@@ -773,6 +778,7 @@ export class TimelineCanvas {
         // Check if clicking on textbox or its resize handle
         const textboxClickResult = this.getClickedTextboxElement(mouseX, mouseY, true);
         if (textboxClickResult) {
+          this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedTextboxIds.add(textboxClickResult.textboxId);
           else if (e.metaKey || e.ctrlKey) this.selectedTextboxIds.delete(textboxClickResult.textboxId);
           else this.selectOnly(this.selectedTextboxIds, textboxClickResult.textboxId);
