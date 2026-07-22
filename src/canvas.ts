@@ -210,7 +210,6 @@ export class TimelineCanvas {
   private onReorderChapter: ((timelineId: string, chapterId: string, newPosition: number) => void) | null = null;
   private onReorderChapters: ((timelineId: string, chapterIds: string[], newPosition: number) => void) | null = null;
   private onTimelineHovered: ((timelineId: string | null, position: 'above' | 'below') => void) | null = null;
-  private onTimelinesMoved: ((timelines: { id: string; x: number; y: number }[]) => void) | null = null;
   private onReorderArc: ((timelineId: string, arcId: string, newPosition: number) => void) | null = null;
   private onBackgroundClick: (() => void) | null = null;
   private onTextboxMoved: ((textboxId: string, x: number, y: number) => void) | null = null;
@@ -701,6 +700,8 @@ export class TimelineCanvas {
           const timeline = this.timelines.find(t => t.id === draggableElement.timelineId);
           if (timeline) {
             this.selectedTimelineDragOrigins = new Map(this.timelines.filter(candidate => this.selectedTimelineIds.has(candidate.id)).map(candidate => [candidate.id, { x: candidate.x, y: candidate.y }]));
+            this.selectedTextboxDragOrigins = new Map(this.textboxes.filter(candidate => this.selectedTextboxIds.has(candidate.id)).map(candidate => [candidate.id, { x: candidate.x, y: candidate.y }]));
+            this.mixedLineDragOrigins = new Map(this.lines.filter(candidate => this.selectedLineIds.has(candidate.id)).map(candidate => [candidate.id, { gridX1: candidate.gridX1, gridY1: candidate.gridY1, gridX2: candidate.gridX2, gridY2: candidate.gridY2 }]));
           }
           
           // Delay drag start to allow double-click detection
@@ -1136,6 +1137,15 @@ export class TimelineCanvas {
             selected.x = Math.round((origin.x + worldDeltaX) / this.gridSize) * this.gridSize;
             selected.y = Math.round((origin.y + worldDeltaY) / this.gridSize) * this.gridSize;
           }
+          for (const [id, origin] of this.selectedTextboxDragOrigins) {
+            const selected = this.textboxes.find(candidate => candidate.id === id);
+            if (selected) { selected.x = origin.x + worldDeltaX; selected.y = origin.y + worldDeltaY; }
+          }
+          const gridX = Math.round(worldDeltaX / this.gridSize), gridY = Math.round(worldDeltaY / this.gridSize);
+          for (const [id, origin] of this.mixedLineDragOrigins) {
+            const selected = this.lines.find(candidate => candidate.id === id);
+            if (selected) { selected.gridX1 = origin.gridX1 + gridX; selected.gridY1 = origin.gridY1 + gridY; selected.gridX2 = origin.gridX2 + gridX; selected.gridY2 = origin.gridY2 + gridY; }
+          }
           
           this.render();
         }
@@ -1337,7 +1347,7 @@ export class TimelineCanvas {
       
       // Save timeline position if we were dragging a timeline
       if (this.isDraggingTimeline && this.selectedTimelineDragOrigins.size) {
-        this.onTimelinesMoved?.(this.timelines.filter(timeline => this.selectedTimelineDragOrigins.has(timeline.id)).map(timeline => ({ id: timeline.id, x: timeline.x, y: timeline.y })));
+        this.onMixedSelectionMoved?.(this.textboxes.filter(textbox => this.selectedTextboxDragOrigins.has(textbox.id)).map(textbox => ({ id: textbox.id, x: textbox.x, y: textbox.y })), this.lines.filter(line => this.mixedLineDragOrigins.has(line.id)).map(line => ({ ...line })), this.timelines.filter(timeline => this.selectedTimelineDragOrigins.has(timeline.id)).map(timeline => ({ id: timeline.id, x: timeline.x, y: timeline.y })));
       }
       
       // Save arc position if we were dragging an arc
@@ -1663,10 +1673,6 @@ export class TimelineCanvas {
 
   setOnTimelineHovered(callback: (timelineId: string | null, position: 'above' | 'below') => void): void {
     this.onTimelineHovered = callback;
-  }
-
-  setOnTimelinesMoved(callback: (timelines: { id: string; x: number; y: number }[]) => void): void {
-    this.onTimelinesMoved = callback;
   }
 
   setOnBackgroundClick(callback: () => void): void {
