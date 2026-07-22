@@ -25,6 +25,7 @@
 - Dragging a selected timeline, including one selected through its head or tail, now moves every selected timeline together in one undoable action.
 - Clicking an arc title now selects only the contiguous on-canvas arc segment represented by that title, including for non-continuous arcs.
 - Marquee selection now also includes fully enclosed timelines, with Shift-add and Ctrl/Cmd-remove support.
+- Dragging a selected textbox, shape, or image now also moves any selected lines and timelines as one undoable mixed-selection action.
 - Branch and chapter placement on an empty, valid grid location can create a new timeline automatically.
 
 ## Improvements

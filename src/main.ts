@@ -344,6 +344,7 @@ function initializeApp() {
       stateManager.updateLine(lineId, { gridX1, gridY1, gridX2, gridY2 });
     });
     canvas.setOnLinesMoved(lines => stateManager.updateCanvasLines(lines));
+    canvas.setOnMixedSelectionMoved((textboxes, lines, timelines) => stateManager.moveCanvasSelection(textboxes, lines, timelines));
 
     canvas.setOnReorderChapter((timelineId: string, chapterId: string, targetIndex: number) => {
       // targetIndex is the position in the sorted chapter array (0-based)

@@ -38,6 +38,7 @@ export interface CanvasLinePosition {
 }
 
 export interface CanvasTimelinePosition { id: string; x: number; y: number; }
+export interface CanvasTextboxPosition { id: string; x: number; y: number; }
 
 export class AppStateManager {
   private state: AppState;
@@ -920,6 +921,21 @@ export class AppStateManager {
       continuity.y = update.y;
       changed = true;
     }
+    if (!changed) return;
+    project.modified = Date.now();
+    this.notifyListeners();
+  }
+
+  moveCanvasSelection(textboxes: CanvasTextboxPosition[], lines: CanvasLinePosition[], timelines: CanvasTimelinePosition[]): void {
+    const project = this.state.currentProject;
+    if (!project) return;
+    const textboxUpdates = new Map(textboxes.map(item => [item.id, item]));
+    const lineUpdates = new Map(lines.map(item => [item.id, item]));
+    const timelineUpdates = new Map(timelines.map(item => [item.id, item]));
+    let changed = false;
+    for (const textbox of project.textboxes || []) { const update = textboxUpdates.get(textbox.id); if (update) { textbox.x = update.x; textbox.y = update.y; changed = true; } }
+    for (const line of project.lines || []) { const update = lineUpdates.get(line.id); if (update) { Object.assign(line, update); changed = true; } }
+    for (const continuity of project.continuities) { const update = timelineUpdates.get(continuity.id); if (update) { continuity.x = update.x; continuity.y = update.y; changed = true; } }
     if (!changed) return;
     project.modified = Date.now();
     this.notifyListeners();

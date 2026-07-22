@@ -145,6 +145,8 @@ export class TimelineCanvas {
   private textboxOriginalX: number = 0;
   private textboxOriginalY: number = 0;
   private selectedTextboxDragOrigins = new Map<string, { x: number; y: number }>();
+  private mixedTimelineDragOrigins = new Map<string, { x: number; y: number }>();
+  private mixedLineDragOrigins = new Map<string, { gridX1: number; gridY1: number; gridX2: number; gridY2: number }>();
   private isResizingTextbox: boolean = false;
   private resizedTextboxId: string | null = null;
   // @ts-ignore - kept for reference but captured locally in closure now
@@ -215,6 +217,7 @@ export class TimelineCanvas {
   private onTextboxResized: ((textboxId: string, width: number, height: number) => void) | null = null;
   private onLineMoved: ((lineId: string, gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private onLinesMoved: ((lines: Line[]) => void) | null = null;
+  private onMixedSelectionMoved: ((textboxes: { id: string; x: number; y: number }[], lines: Line[], timelines: { id: string; x: number; y: number }[]) => void) | null = null;
   private getStateChaptersForTimeline: ((timelineId: string) => Chapter[]) | null = null;
   private hoveredInsertZone: { timelineId: string | null; position: 'above' | 'below' } = { timelineId: null, position: 'below' };
 
@@ -879,6 +882,8 @@ export class TimelineCanvas {
               this.selectedTextboxDragOrigins = new Map(
                 this.textboxes.filter(item => this.selectedTextboxIds.has(item.id)).map(item => [item.id, { x: item.x, y: item.y }]),
               );
+              this.mixedTimelineDragOrigins = new Map(this.timelines.filter(item => this.selectedTimelineIds.has(item.id)).map(item => [item.id, { x: item.x, y: item.y }]));
+              this.mixedLineDragOrigins = new Map(this.lines.filter(item => this.selectedLineIds.has(item.id)).map(item => [item.id, { gridX1: item.gridX1, gridY1: item.gridY1, gridX2: item.gridX2, gridY2: item.gridY2 }]));
             }
             
             // Delay drag start to allow double-click detection
@@ -1177,6 +1182,15 @@ export class TimelineCanvas {
             const selected = this.textboxes.find(item => item.id === id);
             if (selected) { selected.x = origin.x + worldDeltaX; selected.y = origin.y + worldDeltaY; }
           }
+          for (const [id, origin] of this.mixedTimelineDragOrigins) {
+            const selected = this.timelines.find(item => item.id === id);
+            if (selected) { selected.x = Math.round((origin.x + worldDeltaX) / this.gridSize) * this.gridSize; selected.y = Math.round((origin.y + worldDeltaY) / this.gridSize) * this.gridSize; }
+          }
+          const gridX = Math.round(worldDeltaX / this.gridSize), gridY = Math.round(worldDeltaY / this.gridSize);
+          for (const [id, origin] of this.mixedLineDragOrigins) {
+            const selected = this.lines.find(item => item.id === id);
+            if (selected) { selected.gridX1 = origin.gridX1 + gridX; selected.gridY1 = origin.gridY1 + gridY; selected.gridX2 = origin.gridX2 + gridX; selected.gridY2 = origin.gridY2 + gridY; }
+          }
           this.render();
         }
       } else if (this.isResizingTextbox) {
@@ -1349,9 +1363,7 @@ export class TimelineCanvas {
       // Save textbox position if we were dragging a textbox
       if (this.isDraggingTextbox && this.draggedTextboxId && this.onTextboxMoved) {
         const textbox = this.textboxes.find(t => t.id === this.draggedTextboxId);
-        if (textbox) {
-          this.onTextboxMoved(textbox.id, textbox.x, textbox.y);
-        }
+        if (textbox) this.onMixedSelectionMoved?.(this.textboxes.filter(item => this.selectedTextboxDragOrigins.has(item.id)).map(item => ({ id: item.id, x: item.x, y: item.y })), this.lines.filter(item => this.mixedLineDragOrigins.has(item.id)).map(item => ({ ...item })), this.timelines.filter(item => this.mixedTimelineDragOrigins.has(item.id)).map(item => ({ id: item.id, x: item.x, y: item.y })));
       }
       
       // Save textbox dimensions if we were resizing a textbox
@@ -1714,6 +1726,8 @@ export class TimelineCanvas {
   setOnLinesMoved(callback: (lines: Line[]) => void): void {
     this.onLinesMoved = callback;
   }
+
+  setOnMixedSelectionMoved(callback: (textboxes: { id: string; x: number; y: number }[], lines: Line[], timelines: { id: string; x: number; y: number }[]) => void): void { this.onMixedSelectionMoved = callback; }
 
   setTextboxes(textboxes: Textbox[]): void {
     this.textboxes = textboxes;
