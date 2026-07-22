@@ -72,6 +72,7 @@ export class TimelineCanvas {
   private isDraggingChapter: boolean = false;
   private draggedChapterId: string | null = null;
   private draggedChapterTimelineId: string | null = null;
+  private selectedChapterIds = new Set<string>();
   private chapterDragStartX: number = 0;
   private chapterOriginalX: number = 0;
   private pendingDragChapterId: string | null = null;
@@ -620,6 +621,9 @@ export class TimelineCanvas {
         // Check if clicking on draggable chapter (regular chapters, not Head/Tail)
         const draggableChapter = this.isDraggableChapterElement(mouseX, mouseY);
         if (draggableChapter) {
+          if (e.shiftKey) this.selectedChapterIds.add(draggableChapter.chapterId);
+          else if (e.metaKey || e.ctrlKey) this.selectedChapterIds.delete(draggableChapter.chapterId);
+          else this.selectedChapterIds = new Set([draggableChapter.chapterId]);
           // Store pending drag info
           this.pendingDragChapterId = draggableChapter.chapterId;
           this.pendingDragChapterTimelineId = draggableChapter.timelineId;
@@ -921,6 +925,10 @@ export class TimelineCanvas {
         }
 
         // Start panning
+        if (!e.shiftKey && !e.metaKey && !e.ctrlKey) {
+          this.selectedChapterIds.clear();
+          this.selectedTextboxIds.clear();
+        }
         this.isDragging = true;
         this.dragStartX = e.clientX;
         this.dragStartY = e.clientY;
@@ -2116,6 +2124,14 @@ export class TimelineCanvas {
           this.ctx.stroke();
           
           // Draw chapter title above the timeline (stays black)
+          if (this.selectedChapterIds.has(chapter.id)) {
+            this.ctx.save();
+            this.ctx.strokeStyle = '#1976d2';
+            this.ctx.lineWidth = 2;
+            this.ctx.setLineDash([4, 3]);
+            this.ctx.strokeRect(chapterScreenX - 3, screenY - 28, chapterScreenWidth + 6, 40);
+            this.ctx.restore();
+          }
           this.ctx.fillStyle = '#333333';
           this.ctx.font = '12px sans-serif';
           this.ctx.textBaseline = 'bottom';
