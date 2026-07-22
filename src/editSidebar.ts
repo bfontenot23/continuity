@@ -25,6 +25,8 @@ export interface SidebarData {
   alignX?: 'left' | 'center' | 'right';
   alignY?: 'top' | 'middle' | 'bottom';
   shapeType?: 'square' | 'circle' | 'triangle';
+  imageDataUrl?: string;
+  alt?: string;
 }
 
 export interface SidebarDependencies {
@@ -577,6 +579,13 @@ export function createEditSidebar(
       });
       shapeSelect.addEventListener('change', () => stateManager.updateTextbox(data.id, { shapeType: shapeSelect.value as 'square' | 'circle' | 'triangle' }));
       shapeGroup.append(shapeLabel, shapeSelect); content.appendChild(shapeGroup);
+    }
+    if (data.imageDataUrl !== undefined) {
+      const altGroup = document.createElement('div'); altGroup.className = 'form-group';
+      const altLabel = document.createElement('label'); altLabel.textContent = 'Alternative Text';
+      const altInput = document.createElement('input'); altInput.type = 'text'; altInput.value = data.alt || ''; altInput.placeholder = 'Describe this image';
+      altInput.addEventListener('change', () => stateManager.updateTextbox(data.id, { alt: altInput.value }));
+      altGroup.append(altLabel, altInput); content.appendChild(altGroup);
     }
 
     // Save while typing without recreating the focused sidebar.

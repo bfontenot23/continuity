@@ -166,6 +166,8 @@ export class TimelineCanvas {
   private onAddChapterToNewTimeline: ((x: number, y: number) => void) | null = null;
   private onAddTextbox: ((x: number, y: number) => void) | null = null;
   private onAddShape: ((x: number, y: number) => void) | null = null;
+  private onAddImage: ((x: number, y: number) => void) | null = null;
+  private imageCache = new Map<string, HTMLImageElement>();
   private onAddLine: ((gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
   private onEditChapter: ((chapterId: string) => void) | null = null;
@@ -334,6 +336,10 @@ export class TimelineCanvas {
             const centerX = (this.canvas.width / 2 - this.offsetX) / this.zoom;
             const centerY = (this.canvas.height / 2 - this.offsetY) / this.zoom;
             this.onAddShape(centerX, centerY);
+          } else if (clickedOptionId === 'new-image' && this.onAddImage) {
+            const centerX = (this.canvas.width / 2 - this.offsetX) / this.zoom;
+            const centerY = (this.canvas.height / 2 - this.offsetY) / this.zoom;
+            this.onAddImage(centerX, centerY);
           }
           // Close menu smoothly
           this.menu.close();
@@ -1399,6 +1405,10 @@ export class TimelineCanvas {
     this.onAddShape = callback;
   }
 
+  setOnAddImage(callback: (x: number, y: number) => void): void {
+    this.onAddImage = callback;
+  }
+
   setOnEditTextbox(callback: (textboxId: string) => void): void {
     this.onEditTextbox = callback;
   }
@@ -1742,6 +1752,7 @@ export class TimelineCanvas {
 
     // Draw textboxes (skip DOM overlay when suppressed, e.g., offscreen export)
     this.drawTextboxShapes();
+    this.drawEmbeddedImages();
     if (!this.suppressTextboxRender) {
       this.textboxRenderer.render(this.textboxes, {
         zoom: this.zoom,
@@ -1773,6 +1784,21 @@ export class TimelineCanvas {
         this.ctx.moveTo(x + width / 2, y); this.ctx.lineTo(x + width, y + height); this.ctx.lineTo(x, y + height); this.ctx.closePath();
       } else this.ctx.rect(x, y, width, height);
       this.ctx.fill(); this.ctx.stroke(); this.ctx.restore();
+    }
+  }
+
+  private drawEmbeddedImages(): void {
+    for (const textbox of this.textboxes) {
+      if (!textbox.imageDataUrl) continue;
+      let image = this.imageCache.get(textbox.id);
+      if (!image || image.src !== textbox.imageDataUrl) {
+        image = new Image();
+        image.src = textbox.imageDataUrl;
+        image.onload = () => this.render();
+        this.imageCache.set(textbox.id, image);
+      }
+      if (!image.complete || !image.naturalWidth) continue;
+      this.ctx.drawImage(image, textbox.x * this.zoom + this.offsetX, textbox.y * this.zoom + this.offsetY, textbox.width * this.zoom, textbox.height * this.zoom);
     }
   }
 

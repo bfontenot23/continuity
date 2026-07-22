@@ -50,6 +50,9 @@ export interface Textbox {
   alignY?: 'top' | 'middle' | 'bottom'; // Vertical alignment (default: top)
   /** When present this textbox is rendered as a shape, retaining markdown text behavior. */
   shapeType?: 'square' | 'circle' | 'triangle';
+  /** Embedded image payload. Images intentionally live in the portable .cty JSON. */
+  imageDataUrl?: string;
+  alt?: string;
 }
 
 export interface Line {
@@ -220,6 +223,10 @@ export function createTextbox(
 
 export function createShape(x: number, y: number, shapeType: Textbox['shapeType'] = 'square'): Textbox {
   return { ...createTextbox(x, y, 120, 120, 14), content: 'New shape', shapeType };
+}
+
+export function createImage(x: number, y: number, dataUrl: string, width: number, height: number, alt = ''): Textbox {
+  return { ...createTextbox(x, y, width, height, 14), content: '', imageDataUrl: dataUrl, alt, alignX: 'center', alignY: 'middle' };
 }
 
 export function createLine(

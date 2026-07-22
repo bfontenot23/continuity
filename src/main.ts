@@ -1,4 +1,4 @@
-import { createProject, createContinuity, createChapter, createBranch, createTextbox, createShape, createLine, Continuity } from './types';
+import { createProject, createContinuity, createChapter, createBranch, createTextbox, createShape, createImage, createLine, Continuity } from './types';
 import { ContinuityFileManager, LocalStorageManager } from './fileManager';
 import { AppStateManager } from './state';
 import { UIComponents } from './ui';
@@ -124,7 +124,7 @@ function initializeApp() {
 
     openEditSidebar('textbox', {
       id: textboxId, content: textbox.content, fontSize: textbox.fontSize,
-      alignX: textbox.alignX, alignY: textbox.alignY, shapeType: textbox.shapeType,
+      alignX: textbox.alignX, alignY: textbox.alignY, shapeType: textbox.shapeType, imageDataUrl: textbox.imageDataUrl, alt: textbox.alt,
     }, null, autoFocus);
   }
 
@@ -263,6 +263,7 @@ function initializeApp() {
       if (continuity) handleAddBranch(startTimelineId, startPosition, continuity.id, 0);
     });
     canvas.setOnAddShape((x: number, y: number) => handleAddShape(x, y));
+    canvas.setOnAddImage((x: number, y: number) => promptForImage(x, y));
     canvas.setOnAddChapterToNewTimeline((x: number, y: number) => {
       const continuity = createTimelineAt(x, y);
       if (!continuity) return;
@@ -502,6 +503,29 @@ function initializeApp() {
     setTimeout(() => showTextboxEditSidebar(shape.id, true), 0);
   }
 
+  function promptForImage(x: number, y: number): void {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*';
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = String(reader.result || '');
+        const image = new Image();
+        image.onload = () => {
+          const scale = Math.min(1, 300 / Math.max(image.naturalWidth, image.naturalHeight));
+          const item = createImage(x, y, dataUrl, Math.max(50, image.naturalWidth * scale), Math.max(50, image.naturalHeight * scale), file.name);
+          stateManager.addTextbox(item); stateManager.selectTextbox(item.id);
+          setTimeout(() => showTextboxEditSidebar(item.id, true), 0);
+        };
+        image.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    });
+    input.click();
+  }
+
   function handleAddLine(gridX1: number, gridY1: number, gridX2: number, gridY2: number) {
     const state = stateManager.getState();
     if (!state.currentProject) return;
@@ -661,6 +685,11 @@ function initializeApp() {
       if (canvas && canvasInstance && stateManager.getState().currentProject) {
         handleAddShape((canvas.width / 2 - canvasInstance.getOffsetX()) / canvasInstance.getZoom(), (canvas.height / 2 - canvasInstance.getOffsetY()) / canvasInstance.getZoom());
       }
+    }
+    if (e.shiftKey && e.key === 'E' && !isInInput) {
+      e.preventDefault();
+      const canvas = canvasInstance?.getCanvas();
+      if (canvas && canvasInstance && stateManager.getState().currentProject) promptForImage((canvas.width / 2 - canvasInstance.getOffsetX()) / canvasInstance.getZoom(), (canvas.height / 2 - canvasInstance.getOffsetY()) / canvasInstance.getZoom());
     }
 
     // Shift + D: Toggle Line Insertion Mode
