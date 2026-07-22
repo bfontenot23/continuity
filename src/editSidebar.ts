@@ -831,6 +831,22 @@ export function createEditSidebar(
     branchEndEndpointSelect.addEventListener('change', () => {
       stateManager.updateBranch(data.id, { endEndpointStyle: branchEndEndpointSelect.value as 'dot' | 'arrow' | 'none' });
     });
+
+    const flipEndpointsButton = document.createElement('button');
+    flipEndpointsButton.type = 'button';
+    flipEndpointsButton.className = 'btn btn-small';
+    flipEndpointsButton.textContent = 'Flip Endpoints';
+    flipEndpointsButton.title = 'Swap the styles shown at the start and end of this branch';
+    flipEndpointsButton.addEventListener('click', () => {
+      const start = branchStartEndpointSelect.value as 'dot' | 'arrow' | 'none';
+      branchStartEndpointSelect.value = branchEndEndpointSelect.value;
+      branchEndEndpointSelect.value = start;
+      stateManager.updateBranch(data.id, {
+        startEndpointStyle: branchStartEndpointSelect.value as 'dot' | 'arrow' | 'none',
+        endEndpointStyle: branchEndEndpointSelect.value as 'dot' | 'arrow' | 'none',
+      });
+    });
+    content.appendChild(flipEndpointsButton);
   } else if (type === 'line') {
     // Line editing - line style and endpoint styles
     const lineStyleGroup = document.createElement('div');
@@ -924,6 +940,22 @@ export function createEditSidebar(
     endEndpointSelect.addEventListener('change', () => {
       stateManager.updateLine(data.id, { endEndpointStyle: endEndpointSelect.value as 'dot' | 'arrow' | 'none' });
     });
+
+    const flipEndpointsButton = document.createElement('button');
+    flipEndpointsButton.type = 'button';
+    flipEndpointsButton.className = 'btn btn-small';
+    flipEndpointsButton.textContent = 'Flip Endpoints';
+    flipEndpointsButton.title = 'Swap the styles shown at the start and end of this line';
+    flipEndpointsButton.addEventListener('click', () => {
+      const start = startEndpointSelect.value as 'dot' | 'arrow' | 'none';
+      startEndpointSelect.value = endEndpointSelect.value;
+      endEndpointSelect.value = start;
+      stateManager.updateLine(data.id, {
+        startEndpointStyle: startEndpointSelect.value as 'dot' | 'arrow' | 'none',
+        endEndpointStyle: endEndpointSelect.value as 'dot' | 'arrow' | 'none',
+      });
+    });
+    content.appendChild(flipEndpointsButton);
   }
 
   sidebar.appendChild(content);
