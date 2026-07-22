@@ -252,6 +252,22 @@ export class TimelineCanvas {
   }
 
   private setupEventListeners(): void {
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (!this.insertionMode && !this.branchInsertionMode && !this.lineInsertionMode) return;
+      this.insertionMode = false;
+      this.branchInsertionMode = false;
+      this.lineInsertionMode = false;
+      this.branchFirstPoint = null;
+      this.lineFirstPoint = null;
+      this.hoveredInsertionPoint = { timelineId: null, position: -1 };
+      this.branchHoveredPoint = { timelineId: null, position: -1 };
+      this.lineHoveredPoint = null;
+      this.canvas.style.cursor = 'grab';
+      e.preventDefault();
+      this.render();
+    });
+
     // Mouse wheel zoom
     this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
