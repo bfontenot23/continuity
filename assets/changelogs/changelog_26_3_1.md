@@ -32,6 +32,7 @@
 - Dragging a selected chapter from a cross-timeline or mixed selection now moves its associated timelines; same-timeline chapter-only selections continue to reorder locally.
 - Selecting another canvas object now closes an active editor; modifier double-clicks remain selection-only.
 - Selected timelines now support standard copy, cut, paste, and delete behavior with remapped timeline, arc, and chapter identifiers. Branches are pasted only when both endpoint timelines were copied.
+- Timeline clipboard operations now include selected textboxes, shapes, images, and lines in the same paste and undo step.
 - Cut chapter and floating-element selections now retain their clipboard payload after the canvas rebuilds.
 - Selection groups now survive state-driven canvas rebuilds, and pasted timelines, chapters, and floating elements become the active selection.
 - Branch and chapter placement on an empty, valid grid location can create a new timeline automatically.

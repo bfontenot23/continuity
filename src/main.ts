@@ -294,12 +294,18 @@ function initializeApp() {
       };
     });
     canvas.setOnTimelineClipboard(
-      (timelineIds, cut) => stateManager.copyTimelinesToClipboard(timelineIds, cut),
+      (timelineIds, elements, deletion, cut) => stateManager.copyTimelinesToClipboard(timelineIds, elements, cut, deletion),
       () => {
-        const timelineIds = stateManager.pasteTimelinesFromClipboard();
-        preservedCanvasSelection = { timelineIds, chapterIds: [], branchIds: [], textboxIds: [], lineIds: [] };
+        const pasted = stateManager.pasteTimelinesFromClipboard();
+        preservedCanvasSelection = {
+          timelineIds: pasted.timelineIds,
+          chapterIds: [],
+          branchIds: [],
+          textboxIds: pasted.textboxIds,
+          lineIds: pasted.lineIds,
+        };
         canvasInstance?.setSelectionSnapshot(preservedCanvasSelection);
-        return timelineIds;
+        return pasted;
       },
       () => stateManager.hasTimelineClipboard(),
       () => stateManager.clearTimelineClipboard(),

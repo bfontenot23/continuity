@@ -52,6 +52,12 @@ export interface CanvasSelectionSnapshot {
   lineIds: string[];
 }
 
+export interface CanvasPasteResult {
+  timelineIds: string[];
+  textboxIds: string[];
+  lineIds: string[];
+}
+
 export class TimelineCanvas {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -210,8 +216,8 @@ export class TimelineCanvas {
   private onDeleteSelection: ((selection: CanvasSelectionDeletion) => void) | null = null;
   private onPasteSelection: ((elements: CanvasElements) => void) | null = null;
   private onPasteChapters: ((chapters: Chapter[], timelineId: string | null, position: number, point?: { x: number; y: number }) => void) | null = null;
-  private onCopyTimelines: ((timelineIds: string[], cut: boolean) => boolean) | null = null;
-  private onPasteTimelines: (() => string[]) | null = null;
+  private onCopyTimelines: ((timelineIds: string[], elements: CanvasElements, deletion: CanvasSelectionDeletion, cut: boolean) => boolean) | null = null;
+  private onPasteTimelines: (() => CanvasPasteResult) | null = null;
   private onClearTimelineClipboard: (() => void) | null = null;
   private onSelectionClipboardChanged: ((chapters: Chapter[], elements: CanvasElements) => void) | null = null;
   private imageCache = new Map<string, HTMLImageElement>();
@@ -338,7 +344,13 @@ export class TimelineCanvas {
       if (modifier && e.key.toLowerCase() === 'c' && this.hasSelection()) {
         e.preventDefault();
         if (this.selectedTimelineIds.size) {
-          this.timelineClipboardReady = this.onCopyTimelines?.([...this.selectedTimelineIds], false) ?? false;
+          const elements = this.getSelectedCanvasElements();
+          this.timelineClipboardReady = this.onCopyTimelines?.(
+            [...this.selectedTimelineIds],
+            elements,
+            this.getSelectionDeletion(),
+            false,
+          ) ?? false;
           this.chapterClipboard = [];
           this.elementClipboard = { textboxes: [], lines: [] };
           this.onSelectionClipboardChanged?.(this.chapterClipboard, this.elementClipboard);
@@ -364,7 +376,13 @@ export class TimelineCanvas {
       if (modifier && e.key.toLowerCase() === 'x' && this.hasSelection()) {
         if (this.selectedTimelineIds.size) {
           e.preventDefault();
-          this.timelineClipboardReady = this.onCopyTimelines?.([...this.selectedTimelineIds], true) ?? false;
+          const elements = this.getSelectedCanvasElements();
+          this.timelineClipboardReady = this.onCopyTimelines?.(
+            [...this.selectedTimelineIds],
+            elements,
+            this.getSelectionDeletion(),
+            true,
+          ) ?? false;
           this.chapterClipboard = [];
           this.elementClipboard = { textboxes: [], lines: [] };
           this.onSelectionClipboardChanged?.(this.chapterClipboard, this.elementClipboard);
@@ -393,9 +411,11 @@ export class TimelineCanvas {
       }
       if (modifier && e.key.toLowerCase() === 'v' && this.timelineClipboardReady) {
         e.preventDefault();
-        const timelineIds = this.onPasteTimelines?.() ?? [];
+        const pasted = this.onPasteTimelines?.() ?? { timelineIds: [], textboxIds: [], lineIds: [] };
         this.clearSelection();
-        this.selectedTimelineIds = new Set(timelineIds);
+        this.selectedTimelineIds = new Set(pasted.timelineIds);
+        this.selectedTextboxIds = new Set(pasted.textboxIds);
+        this.selectedLineIds = new Set(pasted.lineIds);
         this.render();
         return;
       }
@@ -1767,8 +1787,8 @@ export class TimelineCanvas {
   }
 
   setOnTimelineClipboard(
-    copy: (timelineIds: string[], cut: boolean) => boolean,
-    paste: () => string[],
+    copy: (timelineIds: string[], elements: CanvasElements, deletion: CanvasSelectionDeletion, cut: boolean) => boolean,
+    paste: () => CanvasPasteResult,
     hasClipboard: () => boolean,
     clear: () => void,
   ): void {
@@ -2193,6 +2213,23 @@ export class TimelineCanvas {
 
   private hasSelection(): boolean {
     return this.selectedChapterIds.size > 0 || this.selectedBranchIds.size > 0 || this.selectedLineIds.size > 0 || this.selectedTextboxIds.size > 0 || this.selectedTimelineIds.size > 0;
+  }
+
+  private getSelectedCanvasElements(): CanvasElements {
+    return {
+      textboxes: this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })),
+      lines: this.lines.filter(line => this.selectedLineIds.has(line.id)).map(line => ({ ...line })),
+    };
+  }
+
+  private getSelectionDeletion(): CanvasSelectionDeletion {
+    return {
+      timelineIds: [...this.selectedTimelineIds],
+      chapterIds: [...this.selectedChapterIds],
+      branchIds: [...this.selectedBranchIds],
+      textboxIds: [...this.selectedTextboxIds],
+      lineIds: [...this.selectedLineIds],
+    };
   }
 
   /** A plain click starts a new selection; modifiers alter the existing group. */

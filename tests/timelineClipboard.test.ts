@@ -3,6 +3,8 @@ import test from 'node:test';
 import { AppStateManager } from '../src/state';
 import type { Branch, Continuity, Project } from '../src/types';
 
+const noElements = { textboxes: [], lines: [] };
+
 const storage = new Map<string, string>();
 Object.defineProperty(globalThis, 'localStorage', {
   value: {
@@ -51,8 +53,8 @@ function fixture(): Project {
 test('copying one timeline excludes its cross-timeline branch', () => {
   const manager = new AppStateManager();
   manager.setProject(fixture());
-  assert.equal(manager.copyTimelinesToClipboard(['timeline-a']), true);
-  const pastedIds = manager.pasteTimelinesFromClipboard();
+  assert.equal(manager.copyTimelinesToClipboard(['timeline-a'], noElements), true);
+  const pastedIds = manager.pasteTimelinesFromClipboard().timelineIds;
   assert.equal(pastedIds.length, 1);
   const pasted = manager.getState().currentProject!.continuities.find(item => item.id === pastedIds[0])!;
   assert.deepEqual(pasted.branches, []);
@@ -61,8 +63,8 @@ test('copying one timeline excludes its cross-timeline branch', () => {
 test('copying both branch endpoints remaps the full branch graph', () => {
   const manager = new AppStateManager();
   manager.setProject(fixture());
-  assert.equal(manager.copyTimelinesToClipboard(['timeline-a', 'timeline-b']), true);
-  const pastedIds = manager.pasteTimelinesFromClipboard();
+  assert.equal(manager.copyTimelinesToClipboard(['timeline-a', 'timeline-b'], noElements), true);
+  const pastedIds = manager.pasteTimelinesFromClipboard().timelineIds;
   assert.equal(pastedIds.length, 2);
   const pasted = manager.getState().currentProject!.continuities.filter(item => pastedIds.includes(item.id));
   const branches = new Map(pasted.flatMap(item => item.branches).map(branch => [branch.id, branch]));
@@ -77,7 +79,20 @@ test('copying both branch endpoints remaps the full branch graph', () => {
 test('cutting timelines is one recoverable clipboard operation', () => {
   const manager = new AppStateManager();
   manager.setProject(fixture());
-  assert.equal(manager.copyTimelinesToClipboard(['timeline-a', 'timeline-b'], true), true);
+  assert.equal(manager.copyTimelinesToClipboard(['timeline-a', 'timeline-b'], noElements, true), true);
   assert.equal(manager.getState().currentProject!.continuities.length, 0);
-  assert.equal(manager.pasteTimelinesFromClipboard().length, 2);
+  assert.equal(manager.pasteTimelinesFromClipboard().timelineIds.length, 2);
+});
+
+test('timeline clipboard keeps selected floating elements in the same paste', () => {
+  const manager = new AppStateManager();
+  manager.setProject(fixture());
+  assert.equal(manager.copyTimelinesToClipboard(['timeline-a'], {
+    textboxes: [{ id: 'textbox', content: 'Text', x: 10, y: 20, width: 100, height: 50, fontSize: 14 }],
+    lines: [{ id: 'line', gridX1: 0, gridY1: 0, gridX2: 2, gridY2: 2 }],
+  }), true);
+  const pasted = manager.pasteTimelinesFromClipboard();
+  assert.equal(pasted.timelineIds.length, 1);
+  assert.equal(pasted.textboxIds.length, 1);
+  assert.equal(pasted.lineIds.length, 1);
 });

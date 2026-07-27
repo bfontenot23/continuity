@@ -30,6 +30,12 @@ export interface CanvasElements {
   lines: Line[];
 }
 
+export interface CanvasPasteResult {
+  timelineIds: string[];
+  textboxIds: string[];
+  lineIds: string[];
+}
+
 export interface CanvasLinePosition {
   id: string;
   gridX1: number;
@@ -48,7 +54,7 @@ export class AppStateManager {
   private redoStack: Project[] = [];
   private lastProjectSnapshot: Project | null = null;
   private readonly historyLimit = 20;
-  private timelineClipboard: { continuities: Continuity[]; branches: Branch[] } | null = null;
+  private timelineClipboard: { continuities: Continuity[]; branches: Branch[]; elements: CanvasElements } | null = null;
 
   constructor() {
     this.state = {
@@ -74,7 +80,12 @@ export class AppStateManager {
     this.notifyListeners();
   }
 
-  copyTimelinesToClipboard(timelineIds: string[], cut = false): boolean {
+  copyTimelinesToClipboard(
+    timelineIds: string[],
+    elements: CanvasElements,
+    cut = false,
+    deletion?: CanvasDeletion,
+  ): boolean {
     const project = this.state.currentProject;
     const selectedIds = new Set(timelineIds);
     if (!project || !selectedIds.size) return false;
@@ -91,15 +102,23 @@ export class AppStateManager {
         }
       }
     }
-    this.timelineClipboard = { continuities, branches: [...branchesById.values()] };
+    this.timelineClipboard = {
+      continuities,
+      branches: [...branchesById.values()],
+      elements: {
+        textboxes: elements.textboxes.map(textbox => this.cloneValue(textbox)),
+        lines: elements.lines.map(line => this.cloneValue(line)),
+      },
+    };
 
     if (cut) {
-      project.continuities = project.continuities.filter(continuity => !selectedIds.has(continuity.id));
-      for (const continuity of project.continuities) {
-        continuity.branches = (continuity.branches || []).filter(branch =>
-          !selectedIds.has(branch.startContinuityId) && !selectedIds.has(branch.endContinuityId));
-      }
-      if (this.state.selectedContinuityId && selectedIds.has(this.state.selectedContinuityId)) this.state.selectedContinuityId = null;
+      this.applyCanvasDeletion(project, deletion ?? {
+        timelineIds,
+        chapterIds: [],
+        branchIds: [],
+        textboxIds: elements.textboxes.map(textbox => textbox.id),
+        lineIds: elements.lines.map(line => line.id),
+      });
       project.modified = Date.now();
       this.notifyListeners();
     }
@@ -114,10 +133,10 @@ export class AppStateManager {
     this.timelineClipboard = null;
   }
 
-  pasteTimelinesFromClipboard(): string[] {
+  pasteTimelinesFromClipboard(): CanvasPasteResult {
     const project = this.state.currentProject;
     const clipboard = this.timelineClipboard;
-    if (!project || !clipboard?.continuities.length) return [];
+    if (!project || !clipboard?.continuities.length) return { timelineIds: [], textboxIds: [], lineIds: [] };
 
     const timelineIds = new Map<string, string>();
     const chapterIds = new Map<string, string>();
@@ -161,9 +180,29 @@ export class AppStateManager {
     }
 
     project.continuities.push(...copies);
+    const textboxes = clipboard.elements.textboxes.map(textbox => ({
+      ...this.cloneValue(textbox),
+      id: generateId(),
+      x: textbox.x + 20,
+      y: textbox.y + 20,
+    }));
+    const lines = clipboard.elements.lines.map(line => ({
+      ...this.cloneValue(line),
+      id: generateId(),
+      gridX1: line.gridX1 + 1,
+      gridY1: line.gridY1 + 1,
+      gridX2: line.gridX2 + 1,
+      gridY2: line.gridY2 + 1,
+    }));
+    (project.textboxes ??= []).push(...textboxes);
+    (project.lines ??= []).push(...lines);
     project.modified = Date.now();
     this.notifyListeners();
-    return copies.map(continuity => continuity.id);
+    return {
+      timelineIds: copies.map(continuity => continuity.id),
+      textboxIds: textboxes.map(textbox => textbox.id),
+      lineIds: lines.map(line => line.id),
+    };
   }
 
   canUndo(): boolean { return this.undoStack.length > 0; }
@@ -954,12 +993,18 @@ export class AppStateManager {
   deleteCanvasSelection(selection: CanvasDeletion): void {
     const project = this.state.currentProject;
     if (!project) return;
+    if (!this.applyCanvasDeletion(project, selection)) return;
+    project.modified = Date.now();
+    this.notifyListeners();
+  }
+
+  private applyCanvasDeletion(project: Project, selection: CanvasDeletion): boolean {
     const timelineIds = new Set(selection.timelineIds);
     const chapterIds = new Set(selection.chapterIds);
     const branchIds = new Set(selection.branchIds);
     const textboxIds = new Set(selection.textboxIds);
     const lineIds = new Set(selection.lineIds);
-    if (!timelineIds.size && !chapterIds.size && !branchIds.size && !textboxIds.size && !lineIds.size) return;
+    if (!timelineIds.size && !chapterIds.size && !branchIds.size && !textboxIds.size && !lineIds.size) return false;
 
     project.continuities = project.continuities.filter(continuity => !timelineIds.has(continuity.id));
     for (const continuity of project.continuities) {
@@ -980,8 +1025,7 @@ export class AppStateManager {
     if (this.state.selectedTextboxId && textboxIds.has(this.state.selectedTextboxId)) this.state.selectedTextboxId = null;
     if (this.state.selectedLineId && lineIds.has(this.state.selectedLineId)) this.state.selectedLineId = null;
     if (this.state.selectedContinuityId && timelineIds.has(this.state.selectedContinuityId)) this.state.selectedContinuityId = null;
-    project.modified = Date.now();
-    this.notifyListeners();
+    return true;
   }
 
   /** Add pasted floating elements as one undoable operation. */
