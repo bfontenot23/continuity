@@ -772,6 +772,10 @@ export class TimelineCanvas {
           else if (e.metaKey || e.ctrlKey) this.selectedBranchIds.delete(clickedBranchId);
           else if (!this.selectedBranchIds.has(clickedBranchId)) this.selectOnly(this.selectedBranchIds, clickedBranchId);
           this.render();
+          if (!e.metaKey && !e.ctrlKey) {
+            const branch = this.branches.find(candidate => candidate.id === clickedBranchId);
+            if (branch) this.prepareTimelineDrag(branch.startContinuityId, mouseX, mouseY);
+          }
           return;
         }
 
