@@ -24,6 +24,7 @@
 - Repeated clicks also cycle through overlapping free lines without affecting endpoint editing.
 - Overlapping branches now participate in repeat-click selection cycling while preserving their click-priority over chapters.
 - Repeat-click selection cycling now crosses object types at the same canvas point while retaining branch-first priority.
+- Repeat-click selection cycling now also reaches overlapping timelines, chapters, and arc-title runs of the same type.
 - Dragging a selected timeline, including one selected through its head or tail, now moves every selected timeline together in one undoable action.
 - Clicking an arc title now selects only the contiguous on-canvas arc segment represented by that title, including for non-continuous arcs.
 - Marquee selection now also includes fully enclosed timelines, with Shift-add and Ctrl/Cmd-remove support.

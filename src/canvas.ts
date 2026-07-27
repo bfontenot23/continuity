@@ -711,7 +711,7 @@ export class TimelineCanvas {
             this.pendingDragLineEndpointLineId = null;
             this.pendingDragLineEndpoint = null;
           }
-          
+
           const clickedElement = this.getClickedTimelineOrChapter(mouseX, mouseY);
           if (clickedElement?.type === 'timeline-title' && this.onEditTimeline) {
             this.onEditTimeline(clickedElement.id);
@@ -727,7 +727,7 @@ export class TimelineCanvas {
             }
             return;
           }
-          
+
           // Check for double-click on a branch
           const clickedBranchId = this.getClickedBranch(mouseX, mouseY);
           if (clickedBranchId && this.onEditBranch) {
@@ -787,7 +787,9 @@ export class TimelineCanvas {
 
         // Check if clicking on draggable timeline element (title, head, or tail)
         // Use a small delay before starting drag to allow double-click detection
-        const draggableElement = selectionKind === 'timeline' ? rawTimeline : null;
+        const draggableElement = selectionKind === 'timeline'
+          ? this.isDraggableTimelineElement(mouseX, mouseY, true)
+          : null;
         if (draggableElement?.isDraggable) {
           this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedTimelineIds.add(draggableElement.timelineId);
@@ -800,7 +802,9 @@ export class TimelineCanvas {
         }
 
         // Check if clicking on draggable chapter (regular chapters, not Head/Tail)
-        const draggableChapter = selectionKind === 'chapter' ? rawChapter : null;
+        const draggableChapter = selectionKind === 'chapter'
+          ? this.isDraggableChapterElement(mouseX, mouseY, true)
+          : null;
         if (draggableChapter) {
           this.onBackgroundClick?.();
           const wasSelected = this.selectedChapterIds.has(draggableChapter.chapterId);
@@ -843,7 +847,9 @@ export class TimelineCanvas {
         }
 
         // Check if clicking on draggable arc title (in arc mode)
-        const draggableArc = selectionKind === 'arc' ? rawArc : null;
+        const draggableArc = selectionKind === 'arc'
+          ? this.isDraggableArcElement(mouseX, mouseY, true)
+          : null;
         if (draggableArc) {
           this.onBackgroundClick?.();
           const arcChapterIds = this.getDisplayedArcChapterIds(draggableArc.timelineId, draggableArc.arcId, mouseX);
@@ -3276,13 +3282,15 @@ export class TimelineCanvas {
     return null;
   }
 
-  private isDraggableTimelineElement(mouseX: number, mouseY: number): { timelineId: string; isDraggable: boolean } | null {
+  private isDraggableTimelineElement(mouseX: number, mouseY: number, cycle = false): { timelineId: string; isDraggable: boolean } | null {
     const chapterSegmentWidth = this.gridSize * this.zoom;
     const chapterHeight = 30;
+    const candidates: { timelineId: string; isDraggable: boolean }[] = [];
 
     for (const timeline of this.timelines) {
       const screenX = timeline.x * this.zoom + this.offsetX;
       const screenY = timeline.y * this.zoom + this.offsetY;
+      let hit = false;
 
       // Check title area
       this.ctx.font = '14px sans-serif';
@@ -3296,11 +3304,11 @@ export class TimelineCanvas {
       
       if (mouseY > titleY - titleHeight / 2 && mouseY < titleY + titleHeight / 2 && 
           mouseX > titleX - titleWidth && mouseX < titleX) {
-        return { timelineId: timeline.id, isDraggable: true };
+        hit = true;
       }
 
       // Check head and tail chapters
-      if (timeline.chapters) {
+      if (!hit && timeline.chapters) {
         const headChapter = timeline.chapters.find(ch => ch.title === 'Head');
         const tailChapter = timeline.chapters.find(ch => ch.title === 'Tail');
         
@@ -3313,34 +3321,47 @@ export class TimelineCanvas {
 
           if (mouseX > chapterScreenX && mouseX < chapterScreenX + chapterScreenWidth &&
               mouseY > chapterScreenY && mouseY < chapterScreenY + chapterHeight) {
-            return { timelineId: timeline.id, isDraggable: true };
+            hit = true;
+            break;
           }
         }
         
         // Check timeline line area (below chapter text but within the timeline region)
         // This allows dragging the timeline by clicking on the timeline itself under chapters
-        const lineStartX = screenX;
-        let lineEndX = screenX + (timeline.width * this.zoom);
-        if (timeline.chapters.length > 0) {
-          const lastChapter = timeline.chapters[timeline.chapters.length - 1];
-          lineEndX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth) + 20;
-        }
-        
-        const lineHitArea = 15; // Vertical hit area around the timeline line
-        if (mouseX > lineStartX && mouseX < lineEndX &&
-            mouseY > screenY - lineHitArea && mouseY < screenY + lineHitArea) {
-          return { timelineId: timeline.id, isDraggable: true };
+        if (!hit) {
+          const lineStartX = screenX;
+          let lineEndX = screenX + (timeline.width * this.zoom);
+          if (timeline.chapters.length > 0) {
+            const lastChapter = timeline.chapters[timeline.chapters.length - 1];
+            lineEndX = screenX + ((lastChapter.x + lastChapter.width) * chapterSegmentWidth) + 20;
+          }
+
+          const lineHitArea = 15; // Vertical hit area around the timeline line
+          if (mouseX > lineStartX && mouseX < lineEndX &&
+              mouseY > screenY - lineHitArea && mouseY < screenY + lineHitArea) {
+            hit = true;
+          }
         }
       }
+      if (hit) candidates.push({ timelineId: timeline.id, isDraggable: true });
     }
 
-    return null;
+    if (!candidates.length) return null;
+    if (!cycle || candidates.length === 1) return candidates[0];
+    const key = `timeline:${candidates.map(candidate => candidate.timelineId).join('|')}`;
+    const sameSpot = this.selectionCycle?.key === key
+      && Math.abs(this.selectionCycle.x - mouseX) < 6
+      && Math.abs(this.selectionCycle.y - mouseY) < 6;
+    const index = sameSpot ? (this.selectionCycle!.index + 1) % candidates.length : 0;
+    this.selectionCycle = { key, x: mouseX, y: mouseY, index };
+    return candidates[index];
   }
 
-  private isDraggableChapterElement(mouseX: number, mouseY: number): { timelineId: string; chapterId: string; x: number } | null {
+  private isDraggableChapterElement(mouseX: number, mouseY: number, cycle = false): { timelineId: string; chapterId: string; x: number } | null {
     const chapterSegmentWidth = this.gridSize * this.zoom;
     const chapterHeight = 30;
     const tickHeight = 8;
+    const candidates: { timelineId: string; chapterId: string; x: number }[] = [];
 
     for (const timeline of this.timelines) {
       const screenX = timeline.x * this.zoom + this.offsetX;
@@ -3361,18 +3382,27 @@ export class TimelineCanvas {
 
           if (mouseX > chapterScreenX && mouseX < chapterScreenX + chapterScreenWidth &&
               mouseY > chapterScreenY && mouseY < textAreaBottom) {
-            return { timelineId: timeline.id, chapterId: chapter.id, x: chapter.x };
+            candidates.push({ timelineId: timeline.id, chapterId: chapter.id, x: chapter.x });
           }
         }
       }
     }
 
-    return null;
+    if (!candidates.length) return null;
+    if (!cycle || candidates.length === 1) return candidates[0];
+    const key = `chapter:${candidates.map(candidate => candidate.chapterId).join('|')}`;
+    const sameSpot = this.selectionCycle?.key === key
+      && Math.abs(this.selectionCycle.x - mouseX) < 6
+      && Math.abs(this.selectionCycle.y - mouseY) < 6;
+    const index = sameSpot ? (this.selectionCycle!.index + 1) % candidates.length : 0;
+    this.selectionCycle = { key, x: mouseX, y: mouseY, index };
+    return candidates[index];
   }
 
-  private isDraggableArcElement(mouseX: number, mouseY: number): { timelineId: string; arcId: string; order: number } | null {
+  private isDraggableArcElement(mouseX: number, mouseY: number, cycle = false): { timelineId: string; arcId: string; order: number } | null {
     // Arc dragging is always enabled
     const chapterSegmentWidth = this.gridSize * this.zoom;
+    const candidates: { timelineId: string; arcId: string; order: number }[] = [];
 
     for (const timeline of this.timelines) {
       const screenX = timeline.x * this.zoom + this.offsetX;
@@ -3406,12 +3436,20 @@ export class TimelineCanvas {
 
         if (mouseX > textX && mouseX < textX + textWidth &&
             mouseY > textY && mouseY < textY + textHeight) {
-          return { timelineId: timeline.id, arcId: arc.id, order: arc.order };
+          candidates.push({ timelineId: timeline.id, arcId: arc.id, order: arc.order });
         }
       }
     }
 
-    return null;
+    if (!candidates.length) return null;
+    if (!cycle || candidates.length === 1) return candidates[0];
+    const key = `arc:${candidates.map(candidate => `${candidate.timelineId}:${candidate.arcId}`).join('|')}`;
+    const sameSpot = this.selectionCycle?.key === key
+      && Math.abs(this.selectionCycle.x - mouseX) < 6
+      && Math.abs(this.selectionCycle.y - mouseY) < 6;
+    const index = sameSpot ? (this.selectionCycle!.index + 1) % candidates.length : 0;
+    this.selectionCycle = { key, x: mouseX, y: mouseY, index };
+    return candidates[index];
   }
 
   private getHoveredArcInsertionPoint(mouseX: number, mouseY: number): { timelineId: string | null; position: number } {
