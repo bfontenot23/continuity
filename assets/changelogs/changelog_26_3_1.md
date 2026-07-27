@@ -56,3 +56,4 @@
 - Fixed Ctrl/Cmd-click arc deselection also starting an arc reorder.
 - Fixed rebuilt canvases retaining stale keyboard shortcuts, resize listeners, and animation loops.
 - Fixed new-timeline collision checks so they reserve space for the chapter or pasted chapter group that will be created.
+- Fixed timeline-centered cuts deleting separately selected chapters or branches that were not represented in the clipboard.

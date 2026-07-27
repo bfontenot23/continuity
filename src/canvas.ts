@@ -355,7 +355,7 @@ export class TimelineCanvas {
           this.timelineClipboardReady = this.onCopyTimelines?.(
             [...this.selectedTimelineIds],
             elements,
-            this.getSelectionDeletion(),
+            this.getTimelineClipboardDeletion(),
             false,
           ) ?? false;
           this.chapterClipboard = [];
@@ -387,7 +387,7 @@ export class TimelineCanvas {
           this.timelineClipboardReady = this.onCopyTimelines?.(
             [...this.selectedTimelineIds],
             elements,
-            this.getSelectionDeletion(),
+            this.getTimelineClipboardDeletion(),
             true,
           ) ?? false;
           this.chapterClipboard = [];
@@ -2274,11 +2274,15 @@ export class TimelineCanvas {
     };
   }
 
-  private getSelectionDeletion(): CanvasSelectionDeletion {
+  /**
+   * A timeline clipboard can restore whole timelines and floating elements.
+   * Do not cut separately selected chapters or branches outside that payload.
+   */
+  private getTimelineClipboardDeletion(): CanvasSelectionDeletion {
     return {
       timelineIds: [...this.selectedTimelineIds],
-      chapterIds: [...this.selectedChapterIds],
-      branchIds: [...this.selectedBranchIds],
+      chapterIds: [],
+      branchIds: [],
       textboxIds: [...this.selectedTextboxIds],
       lineIds: [...this.selectedLineIds],
     };
