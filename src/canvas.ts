@@ -710,7 +710,7 @@ export class TimelineCanvas {
           this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedBranchIds.add(clickedBranchId);
           else if (e.metaKey || e.ctrlKey) this.selectedBranchIds.delete(clickedBranchId);
-          else this.selectOnly(this.selectedBranchIds, clickedBranchId);
+          else if (!this.selectedBranchIds.has(clickedBranchId)) this.selectOnly(this.selectedBranchIds, clickedBranchId);
           this.render();
           return;
         }
@@ -720,8 +720,9 @@ export class TimelineCanvas {
           this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedLineIds.add(clickedLineId);
           else if (e.metaKey || e.ctrlKey) this.selectedLineIds.delete(clickedLineId);
-          else this.selectOnly(this.selectedLineIds, clickedLineId);
+          else if (!this.selectedLineIds.has(clickedLineId)) this.selectOnly(this.selectedLineIds, clickedLineId);
           this.render();
+          if (e.metaKey || e.ctrlKey) return;
         }
 
         // Check if clicking on draggable timeline element (title, head, or tail)
@@ -731,8 +732,9 @@ export class TimelineCanvas {
           this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedTimelineIds.add(draggableElement.timelineId);
           else if (e.metaKey || e.ctrlKey) this.selectedTimelineIds.delete(draggableElement.timelineId);
-          else this.selectOnly(this.selectedTimelineIds, draggableElement.timelineId);
+          else if (!this.selectedTimelineIds.has(draggableElement.timelineId)) this.selectOnly(this.selectedTimelineIds, draggableElement.timelineId);
           this.render();
+          if (e.metaKey || e.ctrlKey) return;
           this.pendingDragTimelineId = draggableElement.timelineId;
           this.timelineDragStartX = mouseX;
           this.timelineDragStartY = mouseY;
@@ -762,7 +764,8 @@ export class TimelineCanvas {
           this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedChapterIds.add(draggableChapter.chapterId);
           else if (e.metaKey || e.ctrlKey) this.selectedChapterIds.delete(draggableChapter.chapterId);
-          else this.selectOnly(this.selectedChapterIds, draggableChapter.chapterId);
+          else if (!this.selectedChapterIds.has(draggableChapter.chapterId)) this.selectOnly(this.selectedChapterIds, draggableChapter.chapterId);
+          if (e.metaKey || e.ctrlKey) { this.render(); return; }
           this.draggedChapterIds = this.getContiguousSelectedChapterIds(draggableChapter.timelineId, draggableChapter.chapterId);
           this.selectedChapterIds = new Set(this.draggedChapterIds);
           // Store pending drag info
@@ -818,7 +821,8 @@ export class TimelineCanvas {
           this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedTextboxIds.add(textboxClickResult.textboxId);
           else if (e.metaKey || e.ctrlKey) this.selectedTextboxIds.delete(textboxClickResult.textboxId);
-          else this.selectOnly(this.selectedTextboxIds, textboxClickResult.textboxId);
+          else if (!this.selectedTextboxIds.has(textboxClickResult.textboxId)) this.selectOnly(this.selectedTextboxIds, textboxClickResult.textboxId);
+          if (e.metaKey || e.ctrlKey) { this.render(); return; }
           if (textboxClickResult.type === 'resize-handle') {
             // Start textbox resize
             this.isResizingTextbox = true;
