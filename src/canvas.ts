@@ -205,6 +205,7 @@ export class TimelineCanvas {
   private onCopyTimelines: ((timelineIds: string[], cut: boolean) => boolean) | null = null;
   private onPasteTimelines: (() => string[]) | null = null;
   private onClearTimelineClipboard: (() => void) | null = null;
+  private onSelectionClipboardChanged: ((chapters: Chapter[], elements: CanvasElements) => void) | null = null;
   private imageCache = new Map<string, HTMLImageElement>();
   private onAddLine: ((gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
@@ -332,6 +333,7 @@ export class TimelineCanvas {
           this.timelineClipboardReady = this.onCopyTimelines?.([...this.selectedTimelineIds], false) ?? false;
           this.chapterClipboard = [];
           this.elementClipboard = { textboxes: [], lines: [] };
+          this.onSelectionClipboardChanged?.(this.chapterClipboard, this.elementClipboard);
           return;
         }
         this.timelineClipboardReady = false;
@@ -348,6 +350,7 @@ export class TimelineCanvas {
           textboxes: this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })),
           lines: this.lines.filter(line => this.selectedLineIds.has(line.id)).map(line => ({ ...line })),
         };
+        this.onSelectionClipboardChanged?.(this.chapterClipboard, this.elementClipboard);
         return;
       }
       if (modifier && e.key.toLowerCase() === 'x' && this.hasSelection()) {
@@ -356,6 +359,7 @@ export class TimelineCanvas {
           this.timelineClipboardReady = this.onCopyTimelines?.([...this.selectedTimelineIds], true) ?? false;
           this.chapterClipboard = [];
           this.elementClipboard = { textboxes: [], lines: [] };
+          this.onSelectionClipboardChanged?.(this.chapterClipboard, this.elementClipboard);
           this.clearSelection();
           this.render();
           return;
@@ -374,6 +378,7 @@ export class TimelineCanvas {
           textboxes: this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })),
           lines: this.lines.filter(line => this.selectedLineIds.has(line.id)).map(line => ({ ...line })),
         };
+        this.onSelectionClipboardChanged?.(this.chapterClipboard, this.elementClipboard);
         this.onDeleteSelection?.({ timelineIds: [], chapterIds: [...this.selectedChapterIds], branchIds: [...this.selectedBranchIds], textboxIds: [...this.selectedTextboxIds], lineIds: [...this.selectedLineIds] });
         this.clearSelection();
         this.render(); return;
@@ -1764,6 +1769,19 @@ export class TimelineCanvas {
     this.onPasteTimelines = paste;
     this.onClearTimelineClipboard = clear;
     this.timelineClipboardReady = hasClipboard();
+  }
+
+  setSelectionClipboardPersistence(
+    chapters: Chapter[],
+    elements: CanvasElements,
+    onChange: (chapters: Chapter[], elements: CanvasElements) => void,
+  ): void {
+    this.chapterClipboard = chapters.map(chapter => ({ ...chapter }));
+    this.elementClipboard = {
+      textboxes: elements.textboxes.map(textbox => ({ ...textbox })),
+      lines: elements.lines.map(line => ({ ...line })),
+    };
+    this.onSelectionClipboardChanged = onChange;
   }
 
   setOnEditTextbox(callback: (textboxId: string) => void): void {

@@ -1,4 +1,4 @@
-import { createProject, createContinuity, createChapter, createBranch, createTextbox, createShape, createImage, createLine, Continuity } from './types';
+import { createProject, createContinuity, createChapter, createBranch, createTextbox, createShape, createImage, createLine, Chapter, Continuity, Line, Textbox } from './types';
 import { ContinuityFileManager, LocalStorageManager } from './fileManager';
 import { AppStateManager } from './state';
 import { UIComponents } from './ui';
@@ -130,6 +130,8 @@ function initializeApp() {
 
   let canvasInstance: TimelineCanvas | null = null;
   let lastViewport: { offsetX: number; offsetY: number; zoom: number } | null = null;
+  let chapterClipboard: Chapter[] = [];
+  let elementClipboard: { textboxes: Textbox[]; lines: Line[] } = { textboxes: [], lines: [] };
 
   function renderUI() {
     mainWrapper.innerHTML = '';
@@ -269,6 +271,13 @@ function initializeApp() {
     canvas.setOnHistoryGestures(() => stateManager.undo(), () => stateManager.redo());
     canvas.setOnSelectionDelete(selection => stateManager.deleteCanvasSelection(selection));
     canvas.setOnSelectionPaste(elements => stateManager.addCanvasElements(elements));
+    canvas.setSelectionClipboardPersistence(chapterClipboard, elementClipboard, (chapters, elements) => {
+      chapterClipboard = chapters.map(chapter => ({ ...chapter }));
+      elementClipboard = {
+        textboxes: elements.textboxes.map(textbox => ({ ...textbox })),
+        lines: elements.lines.map(line => ({ ...line })),
+      };
+    });
     canvas.setOnTimelineClipboard(
       (timelineIds, cut) => stateManager.copyTimelinesToClipboard(timelineIds, cut),
       () => stateManager.pasteTimelinesFromClipboard(),
