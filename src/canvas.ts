@@ -44,6 +44,14 @@ export interface CanvasElements {
   lines: Line[];
 }
 
+export interface CanvasSelectionSnapshot {
+  timelineIds: string[];
+  chapterIds: string[];
+  branchIds: string[];
+  textboxIds: string[];
+  lineIds: string[];
+}
+
 export class TimelineCanvas {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -1781,6 +1789,30 @@ export class TimelineCanvas {
       lines: elements.lines.map(line => ({ ...line })),
     };
     this.onSelectionClipboardChanged = onChange;
+  }
+
+  getSelectionSnapshot(): CanvasSelectionSnapshot {
+    return {
+      timelineIds: [...this.selectedTimelineIds],
+      chapterIds: [...this.selectedChapterIds],
+      branchIds: [...this.selectedBranchIds],
+      textboxIds: [...this.selectedTextboxIds],
+      lineIds: [...this.selectedLineIds],
+    };
+  }
+
+  setSelectionSnapshot(snapshot: CanvasSelectionSnapshot): void {
+    const timelineIds = new Set(this.timelines.map(timeline => timeline.id));
+    const chapterIds = new Set(this.timelines.flatMap(timeline => (timeline.chapters ?? []).map(chapter => chapter.id)));
+    const branchIds = new Set(this.branches.map(branch => branch.id));
+    const textboxIds = new Set(this.textboxes.map(textbox => textbox.id));
+    const lineIds = new Set(this.lines.map(line => line.id));
+    this.selectedTimelineIds = new Set(snapshot.timelineIds.filter(id => timelineIds.has(id)));
+    this.selectedChapterIds = new Set(snapshot.chapterIds.filter(id => chapterIds.has(id)));
+    this.selectedBranchIds = new Set(snapshot.branchIds.filter(id => branchIds.has(id)));
+    this.selectedTextboxIds = new Set(snapshot.textboxIds.filter(id => textboxIds.has(id)));
+    this.selectedLineIds = new Set(snapshot.lineIds.filter(id => lineIds.has(id)));
+    this.render();
   }
 
   setOnEditTextbox(callback: (textboxId: string) => void): void {

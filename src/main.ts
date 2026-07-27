@@ -2,7 +2,7 @@ import { createProject, createContinuity, createChapter, createBranch, createTex
 import { ContinuityFileManager, LocalStorageManager } from './fileManager';
 import { AppStateManager } from './state';
 import { UIComponents } from './ui';
-import { TimelineCanvas } from './canvas';
+import { CanvasSelectionSnapshot, TimelineCanvas } from './canvas';
 import { findChapterToLeft, findChapterToRight } from './timelineLayout';
 
 type SidebarType = 'timeline' | 'chapter' | 'branch' | 'textbox' | 'line';
@@ -130,15 +130,19 @@ function initializeApp() {
 
   let canvasInstance: TimelineCanvas | null = null;
   let lastViewport: { offsetX: number; offsetY: number; zoom: number } | null = null;
+  let preservedCanvasSelection: CanvasSelectionSnapshot = {
+    timelineIds: [], chapterIds: [], branchIds: [], textboxIds: [], lineIds: [],
+  };
   let chapterClipboard: Chapter[] = [];
   let elementClipboard: { textboxes: Textbox[]; lines: Line[] } = { textboxes: [], lines: [] };
 
   function renderUI() {
-    mainWrapper.innerHTML = '';
     // Capture viewport before tearing down UI
     if (canvasInstance) {
       lastViewport = canvasInstance.getViewport();
+      preservedCanvasSelection = canvasInstance.getSelectionSnapshot();
     }
+    mainWrapper.innerHTML = '';
     // Save sidebar state before closing
     const savedSidebarState = preservedSidebarState;
     closeSidebar();
@@ -249,6 +253,7 @@ function initializeApp() {
       }
     });
     canvas.setBranches(Array.from(allBranches.values()));
+    canvas.setSelectionSnapshot(preservedCanvasSelection);
 
     // Setup canvas callbacks
     canvas.setOnAddTimeline(() => {
@@ -270,7 +275,17 @@ function initializeApp() {
     canvas.setOnAddImage((x: number, y: number) => promptForImage(x, y));
     canvas.setOnHistoryGestures(() => stateManager.undo(), () => stateManager.redo());
     canvas.setOnSelectionDelete(selection => stateManager.deleteCanvasSelection(selection));
-    canvas.setOnSelectionPaste(elements => stateManager.addCanvasElements(elements));
+    canvas.setOnSelectionPaste(elements => {
+      stateManager.addCanvasElements(elements);
+      preservedCanvasSelection = {
+        timelineIds: [],
+        chapterIds: [],
+        branchIds: [],
+        textboxIds: elements.textboxes.map(textbox => textbox.id),
+        lineIds: elements.lines.map(line => line.id),
+      };
+      canvasInstance?.setSelectionSnapshot(preservedCanvasSelection);
+    });
     canvas.setSelectionClipboardPersistence(chapterClipboard, elementClipboard, (chapters, elements) => {
       chapterClipboard = chapters.map(chapter => ({ ...chapter }));
       elementClipboard = {
@@ -280,7 +295,12 @@ function initializeApp() {
     });
     canvas.setOnTimelineClipboard(
       (timelineIds, cut) => stateManager.copyTimelinesToClipboard(timelineIds, cut),
-      () => stateManager.pasteTimelinesFromClipboard(),
+      () => {
+        const timelineIds = stateManager.pasteTimelinesFromClipboard();
+        preservedCanvasSelection = { timelineIds, chapterIds: [], branchIds: [], textboxIds: [], lineIds: [] };
+        canvasInstance?.setSelectionSnapshot(preservedCanvasSelection);
+        return timelineIds;
+      },
       () => stateManager.hasTimelineClipboard(),
       () => stateManager.clearTimelineClipboard(),
     );
@@ -290,6 +310,10 @@ function initializeApp() {
         const continuity = createTimelineAt(point.x, point.y);
         if (continuity) stateManager.insertChapters(continuity.id, chapters, 0);
       }
+      preservedCanvasSelection = {
+        timelineIds: [], chapterIds: chapters.map(chapter => chapter.id), branchIds: [], textboxIds: [], lineIds: [],
+      };
+      canvasInstance?.setSelectionSnapshot(preservedCanvasSelection);
     });
     canvas.setOnAddChapterToNewTimeline((x: number, y: number) => {
       const continuity = createTimelineAt(x, y);
