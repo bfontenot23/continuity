@@ -321,9 +321,9 @@ function initializeApp() {
       const hadOpenSidebar = currentEditSidebar !== null;
       closeSidebar();
       if (hadOpenSidebar) {
-        // Focused fields save silently while typing; publish them when the canvas
-        // closes the editor so the new canvas reflects the final state.
-        stateManager.refresh();
+        // Focused fields already save into the live project model. Refresh the
+        // existing canvas without rebuilding it so the click can finish selecting.
+        canvasInstance?.refresh();
       }
     });
 
