@@ -843,6 +843,7 @@ export class TimelineCanvas {
             else this.selectedChapterIds.add(chapterId);
           }
           this.render();
+          if (e.metaKey || e.ctrlKey) return;
           // Store pending drag info
           this.pendingDragArcId = draggableArc.arcId;
           this.pendingDragArcTimelineId = draggableArc.timelineId;
