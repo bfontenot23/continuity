@@ -141,6 +141,8 @@ function initializeApp() {
     if (canvasInstance) {
       lastViewport = canvasInstance.getViewport();
       preservedCanvasSelection = canvasInstance.getSelectionSnapshot();
+      canvasInstance.destroy();
+      canvasInstance = null;
     }
     mainWrapper.innerHTML = '';
     // Save sidebar state before closing

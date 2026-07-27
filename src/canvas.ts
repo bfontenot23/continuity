@@ -202,6 +202,10 @@ export class TimelineCanvas {
   
   // Animation state
   private animationRunning: boolean = false;
+  private destroyed = false;
+  private escapeKeyHandler: ((event: KeyboardEvent) => void) | null = null;
+  private selectionKeyHandler: ((event: KeyboardEvent) => void) | null = null;
+  private resizeHandler: (() => void) | null = null;
   private suppressMenuRender: boolean = false; // Hide menu for exports/snapshots
   private suppressTextboxRender: boolean = false; // Skip DOM textbox overlay (e.g., offscreen export)
   
@@ -303,6 +307,7 @@ export class TimelineCanvas {
 
   private startAnimationLoop(): void {
     const animate = () => {
+      if (this.destroyed) return;
       if (this.animationRunning || this.isCentering) {
         this.render();
       }
@@ -313,7 +318,7 @@ export class TimelineCanvas {
   }
 
   private setupEventListeners(): void {
-    document.addEventListener('keydown', (e) => {
+    this.escapeKeyHandler = (e) => {
       if (e.key !== 'Escape') return;
       if (!this.insertionMode && !this.branchInsertionMode && !this.lineInsertionMode) return;
       this.insertionMode = false;
@@ -328,8 +333,9 @@ export class TimelineCanvas {
       this.canvas.style.cursor = 'grab';
       e.preventDefault();
       this.render();
-    });
-    document.addEventListener('keydown', (e) => {
+    };
+    document.addEventListener('keydown', this.escapeKeyHandler);
+    this.selectionKeyHandler = (e) => {
       const target = e.target as HTMLElement;
       if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT') return;
       const modifier = e.metaKey || e.ctrlKey;
@@ -441,7 +447,8 @@ export class TimelineCanvas {
         this.onDeleteSelection?.({ timelineIds: [...this.selectedTimelineIds], chapterIds: [...this.selectedChapterIds], branchIds: [...this.selectedBranchIds], textboxIds: [...this.selectedTextboxIds], lineIds: [...this.selectedLineIds] });
         this.clearSelection(); this.render();
       }
-    });
+    };
+    document.addEventListener('keydown', this.selectionKeyHandler);
 
     // Mouse wheel zoom
     this.canvas.addEventListener('wheel', (e) => {
@@ -1531,13 +1538,22 @@ export class TimelineCanvas {
     });
 
     // Handle window resize
-    window.addEventListener('resize', () => {
+    this.resizeHandler = () => {
       this.canvas.width = this.container.clientWidth;
       this.canvas.height = this.container.clientHeight;
       this.menuCanvas.width = this.container.clientWidth;
       this.menuCanvas.height = this.container.clientHeight;
       this.render();
-    });
+    };
+    window.addEventListener('resize', this.resizeHandler);
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    if (this.dragDelayTimer !== null) clearTimeout(this.dragDelayTimer);
+    if (this.escapeKeyHandler) document.removeEventListener('keydown', this.escapeKeyHandler);
+    if (this.selectionKeyHandler) document.removeEventListener('keydown', this.selectionKeyHandler);
+    if (this.resizeHandler) window.removeEventListener('resize', this.resizeHandler);
   }
 
   // Viewport getters/setters to preserve camera state across UI re-renders

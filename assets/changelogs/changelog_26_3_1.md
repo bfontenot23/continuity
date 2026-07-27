@@ -52,3 +52,4 @@
 - Fixed group drags collapsing to a single object when dragging an object that was already selected.
 - Fixed the second click in an overlap-selection cycle opening the editor instead of selecting the next object.
 - Fixed Ctrl/Cmd-click arc deselection also starting an arc reorder.
+- Fixed rebuilt canvases retaining stale keyboard shortcuts, resize listeners, and animation loops.
