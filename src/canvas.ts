@@ -93,7 +93,7 @@ export class TimelineCanvas {
   private selectedTimelineIds = new Set<string>();
   private selectionRect: { startX: number; startY: number; endX: number; endY: number } | null = null;
   private chapterDragStartX: number = 0;
-  private chapterOriginalX: number = 0;
+  private selectedChapterDragOrigins = new Map<string, number>();
   private pendingDragChapterId: string | null = null;
   private pendingDragChapterTimelineId: string | null = null;
   private draggedChapterIds: string[] = [];
@@ -760,11 +760,14 @@ export class TimelineCanvas {
           if (e.metaKey || e.ctrlKey) { this.render(); return; }
           this.draggedChapterIds = this.getContiguousSelectedChapterIds(draggableChapter.timelineId, draggableChapter.chapterId);
           this.selectedChapterIds = new Set(this.draggedChapterIds);
+          const dragTimeline = this.timelines.find(timeline => timeline.id === draggableChapter.timelineId);
+          this.selectedChapterDragOrigins = new Map((dragTimeline?.chapters ?? [])
+            .filter(chapter => this.draggedChapterIds.includes(chapter.id))
+            .map(chapter => [chapter.id, chapter.x]));
           // Store pending drag info
           this.pendingDragChapterId = draggableChapter.chapterId;
           this.pendingDragChapterTimelineId = draggableChapter.timelineId;
           this.chapterDragStartX = mouseX;
-          this.chapterOriginalX = draggableChapter.x;
           
           // Delay drag start to allow double-click detection
           this.dragDelayTimer = window.setTimeout(() => {
@@ -1202,22 +1205,20 @@ export class TimelineCanvas {
             const chapterSegmentWidth = this.gridSize * this.zoom;
             const gridDelta = deltaX / chapterSegmentWidth;
             
-            // Calculate new position relative to original
-            let newX = this.chapterOriginalX + gridDelta;
-            
             // Find Head and Tail chapters to determine bounds
             const headChapter = timeline.chapters.find(ch => ch.title === 'Head');
             const tailChapter = timeline.chapters.find(ch => ch.title === 'Tail');
-            
+            let constrainedDelta = gridDelta;
             if (headChapter && tailChapter) {
-              // Constrain between Head end and Tail start
-              const minX = headChapter.x + headChapter.width;
-              const maxX = tailChapter.x - chapter.width;
-              newX = Math.max(minX, Math.min(maxX, newX));
+              const selected = timeline.chapters.filter(candidate => this.selectedChapterDragOrigins.has(candidate.id));
+              const left = Math.min(...selected.map(candidate => this.selectedChapterDragOrigins.get(candidate.id)!));
+              const right = Math.max(...selected.map(candidate => this.selectedChapterDragOrigins.get(candidate.id)! + candidate.width));
+              constrainedDelta = Math.max(headChapter.x + headChapter.width - left, Math.min(tailChapter.x - right, gridDelta));
             }
-            
-            // Update chapter position
-            chapter.x = newX;
+            for (const [id, origin] of this.selectedChapterDragOrigins) {
+              const selected = timeline.chapters.find(candidate => candidate.id === id);
+              if (selected) selected.x = origin + constrainedDelta;
+            }
             
             // Update insertion point hover state for visual feedback
             this.hoveredInsertionPoint = this.getHoveredInsertionPoint(mouseX, mouseY);
@@ -2748,8 +2749,9 @@ export class TimelineCanvas {
           // Skip checking insertion point if this is the dragged chapter
           // (its position has been modified and would give wrong insertionX)
           if (this.isDraggingChapter && timeline.id === this.draggedChapterTimelineId) {
-            const draggedChapterIndex = timeline.chapters.findIndex(ch => ch.id === this.draggedChapterId);
-            if (i === draggedChapterIndex || i === draggedChapterIndex - 1) {
+            const adjacentToDraggedChapter = timeline.chapters.some((candidate, index) =>
+              this.draggedChapterIds.includes(candidate.id) && (i === index || i === index - 1));
+            if (adjacentToDraggedChapter) {
               continue;
             }
           }

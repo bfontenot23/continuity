@@ -17,6 +17,7 @@
 - Standard copy, cut, and paste now work for mixed floating textbox, shape, image, and line selections, preserving one undo step per paste or cut.
 - Selected lines now move together, with one undo entry for the grouped move.
 - Dragging adjacent selected chapters now reorders the contiguous group together while preserving chapter order and branch anchors.
+- Adjacent chapter groups now move as one visual block during drag and hide every insertion boundary occupied by the group.
 - Marquee selection now includes branches and correctly becomes a replacement selection if Shift is released before drop.
 - Adjacent (or normalized non-adjacent) chapter selections now support copy/cut/paste into an existing timeline insertion point or a valid new-timeline location; pasted branches are intentionally excluded.
 - Repeated clicks on overlapping textboxes, shapes, or images now cycle through the stack while retaining Shift-add and Ctrl/Cmd-remove selection behavior.
