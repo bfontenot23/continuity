@@ -4,7 +4,7 @@
  */
 
 import { Arc, Branch, Chapter, Line, Textbox, generateId } from './types';
-import { getChapterPositions, sortChapters } from './timelineLayout';
+import { getChapterPositions, getChapterWidth, sortChapters } from './timelineLayout';
 import { MenuSystem } from './menuSystem';
 import { groupTimelineChaptersByArc } from './canvasArcGroups';
 import { renderTextboxesToCanvas } from './textboxExportRenderer';
@@ -595,7 +595,10 @@ export class TimelineCanvas {
             this.insertionMode = false;
             this.render();
           } else {
-            const point = this.getValidTimelineCreationPoint(mouseX, mouseY);
+            const chapterGridLength = this.chapterPasteMode
+              ? this.chapterClipboard.reduce((total, chapter) => total + getChapterWidth(chapter), 0)
+              : 1;
+            const point = this.getValidTimelineCreationPoint(mouseX, mouseY, chapterGridLength);
             if (point && this.chapterPasteMode) {
               this.onPasteChapters?.(this.chapterClipboard.map(chapter => ({ ...chapter, id: generateId() })), null, 0, point);
             } else if (point && this.onAddChapterToNewTimeline) {
@@ -2915,13 +2918,20 @@ export class TimelineCanvas {
 
   /**
    * Return a grid-aligned empty location suitable for a newly created timeline.
-   * A new timeline begins as a two-grid-unit segment; its full visual height is
-   * included here so it cannot be created on top of an existing timeline.
+   * A new timeline always includes its head and tail. Callers may reserve
+   * additional grid units for chapters that will be inserted immediately.
+   * Its full visual height is included here so it cannot be created on top of
+   * an existing timeline.
    */
-  private getValidTimelineCreationPoint(mouseX: number, mouseY: number): { x: number; y: number } | null {
+  private getValidTimelineCreationPoint(
+    mouseX: number,
+    mouseY: number,
+    chapterGridLength: number = 0,
+  ): { x: number; y: number } | null {
     const x = Math.round(((mouseX - this.offsetX) / this.zoom) / this.gridSize) * this.gridSize;
     const y = Math.round(((mouseY - this.offsetY) / this.zoom) / this.gridSize) * this.gridSize;
-    const candidate = { left: x, right: x + this.gridSize * 2, top: y - this.timelineHeight / 2, bottom: y + this.timelineHeight / 2 };
+    const candidateWidth = this.gridSize * (2 + chapterGridLength);
+    const candidate = { left: x, right: x + candidateWidth, top: y - this.timelineHeight / 2, bottom: y + this.timelineHeight / 2 };
     const overlaps = this.timelines.some(timeline => {
       const finalChapter = timeline.chapters?.[timeline.chapters.length - 1];
       const width = Math.max(this.gridSize * 2, ((finalChapter?.x ?? 1) + (finalChapter?.width ?? 1)) * this.gridSize);

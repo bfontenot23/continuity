@@ -53,3 +53,4 @@
 - Fixed the second click in an overlap-selection cycle opening the editor instead of selecting the next object.
 - Fixed Ctrl/Cmd-click arc deselection also starting an arc reorder.
 - Fixed rebuilt canvases retaining stale keyboard shortcuts, resize listeners, and animation loops.
+- Fixed new-timeline collision checks so they reserve space for the chapter or pasted chapter group that will be created.
