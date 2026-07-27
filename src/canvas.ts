@@ -32,6 +32,7 @@ export interface TimelineChapter {
 }
 
 export interface CanvasSelectionDeletion {
+  timelineIds: string[];
   chapterIds: string[];
   branchIds: string[];
   textboxIds: string[];
@@ -136,6 +137,7 @@ export class TimelineCanvas {
   private elementClipboard: CanvasElements = { textboxes: [], lines: [] };
   private chapterClipboard: Chapter[] = [];
   private chapterPasteMode = false;
+  private timelineClipboardReady = false;
   private textboxOverlayContainer: HTMLElement | null = null;
   private textboxRenderer: TextboxOverlayRenderer;
   private isDraggingTextbox: boolean = false;
@@ -200,6 +202,9 @@ export class TimelineCanvas {
   private onDeleteSelection: ((selection: CanvasSelectionDeletion) => void) | null = null;
   private onPasteSelection: ((elements: CanvasElements) => void) | null = null;
   private onPasteChapters: ((chapters: Chapter[], timelineId: string | null, position: number, point?: { x: number; y: number }) => void) | null = null;
+  private onCopyTimelines: ((timelineIds: string[], cut: boolean) => boolean) | null = null;
+  private onPasteTimelines: (() => string[]) | null = null;
+  private onClearTimelineClipboard: (() => void) | null = null;
   private imageCache = new Map<string, HTMLImageElement>();
   private onAddLine: ((gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private onEditTimeline: ((timelineId: string) => void) | null = null;
@@ -323,6 +328,14 @@ export class TimelineCanvas {
       }
       if (modifier && e.key.toLowerCase() === 'c' && this.hasSelection()) {
         e.preventDefault();
+        if (this.selectedTimelineIds.size) {
+          this.timelineClipboardReady = this.onCopyTimelines?.([...this.selectedTimelineIds], false) ?? false;
+          this.chapterClipboard = [];
+          this.elementClipboard = { textboxes: [], lines: [] };
+          return;
+        }
+        this.timelineClipboardReady = false;
+        this.onClearTimelineClipboard?.();
         const chapterTimelines = this.timelines.filter(timeline => (timeline.chapters ?? []).some(chapter => this.selectedChapterIds.has(chapter.id)));
         if (chapterTimelines.length > 1) {
           alert('Chapters can only be copied when they are on the same timeline.');
@@ -338,6 +351,17 @@ export class TimelineCanvas {
         return;
       }
       if (modifier && e.key.toLowerCase() === 'x' && this.hasSelection()) {
+        if (this.selectedTimelineIds.size) {
+          e.preventDefault();
+          this.timelineClipboardReady = this.onCopyTimelines?.([...this.selectedTimelineIds], true) ?? false;
+          this.chapterClipboard = [];
+          this.elementClipboard = { textboxes: [], lines: [] };
+          this.clearSelection();
+          this.render();
+          return;
+        }
+        this.timelineClipboardReady = false;
+        this.onClearTimelineClipboard?.();
         const chapterTimelines = this.timelines.filter(timeline => (timeline.chapters ?? []).some(chapter => this.selectedChapterIds.has(chapter.id)));
         if (chapterTimelines.length > 1) { alert('Chapters can only be cut when they are on the same timeline.'); return; }
         const hasCopyableElements = this.selectedTextboxIds.size > 0 || this.selectedLineIds.size > 0 || this.selectedChapterIds.size > 0;
@@ -350,9 +374,17 @@ export class TimelineCanvas {
           textboxes: this.textboxes.filter(textbox => this.selectedTextboxIds.has(textbox.id)).map(textbox => ({ ...textbox })),
           lines: this.lines.filter(line => this.selectedLineIds.has(line.id)).map(line => ({ ...line })),
         };
-        this.onDeleteSelection?.({ chapterIds: [...this.selectedChapterIds], branchIds: [...this.selectedBranchIds], textboxIds: [...this.selectedTextboxIds], lineIds: [...this.selectedLineIds] });
+        this.onDeleteSelection?.({ timelineIds: [], chapterIds: [...this.selectedChapterIds], branchIds: [...this.selectedBranchIds], textboxIds: [...this.selectedTextboxIds], lineIds: [...this.selectedLineIds] });
         this.clearSelection();
         this.render(); return;
+      }
+      if (modifier && e.key.toLowerCase() === 'v' && this.timelineClipboardReady) {
+        e.preventDefault();
+        const timelineIds = this.onPasteTimelines?.() ?? [];
+        this.clearSelection();
+        this.selectedTimelineIds = new Set(timelineIds);
+        this.render();
+        return;
       }
       if (modifier && e.key.toLowerCase() === 'v' && this.chapterClipboard.length) {
         e.preventDefault();
@@ -372,7 +404,7 @@ export class TimelineCanvas {
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && this.hasSelection()) {
         e.preventDefault();
-        this.onDeleteSelection?.({ chapterIds: [...this.selectedChapterIds], branchIds: [...this.selectedBranchIds], textboxIds: [...this.selectedTextboxIds], lineIds: [...this.selectedLineIds] });
+        this.onDeleteSelection?.({ timelineIds: [...this.selectedTimelineIds], chapterIds: [...this.selectedChapterIds], branchIds: [...this.selectedBranchIds], textboxIds: [...this.selectedTextboxIds], lineIds: [...this.selectedLineIds] });
         this.clearSelection(); this.render();
       }
     });
@@ -1720,6 +1752,18 @@ export class TimelineCanvas {
 
   setOnPasteChapters(callback: (chapters: Chapter[], timelineId: string | null, position: number, point?: { x: number; y: number }) => void): void {
     this.onPasteChapters = callback;
+  }
+
+  setOnTimelineClipboard(
+    copy: (timelineIds: string[], cut: boolean) => boolean,
+    paste: () => string[],
+    hasClipboard: () => boolean,
+    clear: () => void,
+  ): void {
+    this.onCopyTimelines = copy;
+    this.onPasteTimelines = paste;
+    this.onClearTimelineClipboard = clear;
+    this.timelineClipboardReady = hasClipboard();
   }
 
   setOnEditTextbox(callback: (textboxId: string) => void): void {

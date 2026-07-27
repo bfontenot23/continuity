@@ -2,7 +2,7 @@
  * Main application state management
  */
 
-import { Project, Continuity, Chapter, Arc, Branch, Textbox, Line } from './types';
+import { Project, Continuity, Chapter, Arc, Branch, Textbox, Line, generateId } from './types';
 import { LocalStorageManager } from './fileManager';
 import { getChapterPositions } from './timelineLayout';
 
@@ -18,6 +18,7 @@ export interface AppState {
 }
 
 export interface CanvasDeletion {
+  timelineIds: string[];
   chapterIds: string[];
   branchIds: string[];
   textboxIds: string[];
@@ -47,6 +48,7 @@ export class AppStateManager {
   private redoStack: Project[] = [];
   private lastProjectSnapshot: Project | null = null;
   private readonly historyLimit = 20;
+  private timelineClipboard: { continuities: Continuity[]; branches: Branch[] } | null = null;
 
   constructor() {
     this.state = {
@@ -68,7 +70,100 @@ export class AppStateManager {
     this.undoStack = [];
     this.redoStack = [];
     this.lastProjectSnapshot = this.cloneProject(project);
+    this.timelineClipboard = null;
     this.notifyListeners();
+  }
+
+  copyTimelinesToClipboard(timelineIds: string[], cut = false): boolean {
+    const project = this.state.currentProject;
+    const selectedIds = new Set(timelineIds);
+    if (!project || !selectedIds.size) return false;
+    const continuities = project.continuities
+      .filter(continuity => selectedIds.has(continuity.id))
+      .map(continuity => ({ ...this.cloneValue(continuity), branches: [] }));
+    if (!continuities.length) return false;
+
+    const branchesById = new Map<string, Branch>();
+    for (const continuity of project.continuities) {
+      for (const branch of continuity.branches || []) {
+        if (selectedIds.has(branch.startContinuityId) && selectedIds.has(branch.endContinuityId)) {
+          branchesById.set(branch.id, this.cloneValue(branch));
+        }
+      }
+    }
+    this.timelineClipboard = { continuities, branches: [...branchesById.values()] };
+
+    if (cut) {
+      project.continuities = project.continuities.filter(continuity => !selectedIds.has(continuity.id));
+      for (const continuity of project.continuities) {
+        continuity.branches = (continuity.branches || []).filter(branch =>
+          !selectedIds.has(branch.startContinuityId) && !selectedIds.has(branch.endContinuityId));
+      }
+      if (this.state.selectedContinuityId && selectedIds.has(this.state.selectedContinuityId)) this.state.selectedContinuityId = null;
+      project.modified = Date.now();
+      this.notifyListeners();
+    }
+    return true;
+  }
+
+  hasTimelineClipboard(): boolean {
+    return Boolean(this.timelineClipboard?.continuities.length);
+  }
+
+  clearTimelineClipboard(): void {
+    this.timelineClipboard = null;
+  }
+
+  pasteTimelinesFromClipboard(): string[] {
+    const project = this.state.currentProject;
+    const clipboard = this.timelineClipboard;
+    if (!project || !clipboard?.continuities.length) return [];
+
+    const timelineIds = new Map<string, string>();
+    const chapterIds = new Map<string, string>();
+    const arcIds = new Map<string, string>();
+    for (const continuity of clipboard.continuities) {
+      timelineIds.set(continuity.id, generateId());
+      for (const chapter of continuity.chapters) chapterIds.set(chapter.id, generateId());
+      for (const arc of continuity.arcs) arcIds.set(arc.id, generateId());
+    }
+
+    const copies: Continuity[] = clipboard.continuities.map(continuity => ({
+      ...this.cloneValue(continuity),
+      id: timelineIds.get(continuity.id)!,
+      name: `${continuity.name} Copy`,
+      x: (continuity.x ?? 0) + 50,
+      y: (continuity.y ?? 0) + 50,
+      arcs: continuity.arcs.map(arc => ({ ...this.cloneValue(arc), id: arcIds.get(arc.id)! })),
+      chapters: continuity.chapters.map(chapter => ({
+        ...this.cloneValue(chapter),
+        id: chapterIds.get(chapter.id)!,
+        arcId: chapter.arcId ? arcIds.get(chapter.arcId) : undefined,
+      })),
+      branches: [],
+    }));
+    const copiesById = new Map(copies.map(continuity => [continuity.id, continuity]));
+
+    for (const branch of clipboard.branches) {
+      const startContinuityId = timelineIds.get(branch.startContinuityId);
+      const endContinuityId = timelineIds.get(branch.endContinuityId);
+      if (!startContinuityId || !endContinuityId) continue;
+      const copy: Branch = {
+        ...this.cloneValue(branch),
+        id: generateId(),
+        startContinuityId,
+        endContinuityId,
+        startChapterId: branch.startChapterId ? chapterIds.get(branch.startChapterId) : undefined,
+        endChapterId: branch.endChapterId ? chapterIds.get(branch.endChapterId) : undefined,
+      };
+      copiesById.get(startContinuityId)?.branches.push(copy);
+      if (endContinuityId !== startContinuityId) copiesById.get(endContinuityId)?.branches.push(copy);
+    }
+
+    project.continuities.push(...copies);
+    project.modified = Date.now();
+    this.notifyListeners();
+    return copies.map(continuity => continuity.id);
   }
 
   canUndo(): boolean { return this.undoStack.length > 0; }
@@ -859,18 +954,23 @@ export class AppStateManager {
   deleteCanvasSelection(selection: CanvasDeletion): void {
     const project = this.state.currentProject;
     if (!project) return;
+    const timelineIds = new Set(selection.timelineIds);
     const chapterIds = new Set(selection.chapterIds);
     const branchIds = new Set(selection.branchIds);
     const textboxIds = new Set(selection.textboxIds);
     const lineIds = new Set(selection.lineIds);
-    if (!chapterIds.size && !branchIds.size && !textboxIds.size && !lineIds.size) return;
+    if (!timelineIds.size && !chapterIds.size && !branchIds.size && !textboxIds.size && !lineIds.size) return;
 
+    project.continuities = project.continuities.filter(continuity => !timelineIds.has(continuity.id));
     for (const continuity of project.continuities) {
       for (const chapterId of chapterIds) {
         if (continuity.chapters.some(chapter => chapter.id === chapterId)) this.updateBranchReferencesAfterChapterDeletion(continuity, chapterId);
       }
       continuity.chapters = continuity.chapters.filter(chapter => !chapterIds.has(chapter.id));
-      continuity.branches = (continuity.branches || []).filter(branch => !branchIds.has(branch.id));
+      continuity.branches = (continuity.branches || []).filter(branch =>
+        !branchIds.has(branch.id)
+        && !timelineIds.has(branch.startContinuityId)
+        && !timelineIds.has(branch.endContinuityId));
       this.recalculateBranchPositions(continuity);
     }
     project.textboxes = (project.textboxes || []).filter(textbox => !textboxIds.has(textbox.id));
@@ -879,6 +979,7 @@ export class AppStateManager {
     if (this.state.selectedBranchId && branchIds.has(this.state.selectedBranchId)) this.state.selectedBranchId = null;
     if (this.state.selectedTextboxId && textboxIds.has(this.state.selectedTextboxId)) this.state.selectedTextboxId = null;
     if (this.state.selectedLineId && lineIds.has(this.state.selectedLineId)) this.state.selectedLineId = null;
+    if (this.state.selectedContinuityId && timelineIds.has(this.state.selectedContinuityId)) this.state.selectedContinuityId = null;
     project.modified = Date.now();
     this.notifyListeners();
   }
@@ -958,6 +1059,10 @@ export class AppStateManager {
     }
     this.persistProject();
     this.listeners.forEach(listener => listener(this.getState()));
+  }
+
+  private cloneValue<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
   }
 
   private cloneProject(project: Project): Project {

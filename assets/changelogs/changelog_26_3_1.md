@@ -29,6 +29,7 @@
 - Dragging a selected line now moves selected textboxes, shapes, images, and timelines with the same mixed-selection behavior.
 - Dragging a selected timeline now likewise moves selected textboxes, shapes, images, and lines as one grouped action.
 - Selecting another canvas object now closes an active editor; modifier double-clicks remain selection-only.
+- Selected timelines now support standard copy, cut, paste, and delete behavior with remapped timeline, arc, and chapter identifiers. Branches are pasted only when both endpoint timelines were copied.
 - Branch and chapter placement on an empty, valid grid location can create a new timeline automatically.
 
 ## Improvements

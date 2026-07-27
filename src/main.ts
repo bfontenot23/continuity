@@ -269,6 +269,12 @@ function initializeApp() {
     canvas.setOnHistoryGestures(() => stateManager.undo(), () => stateManager.redo());
     canvas.setOnSelectionDelete(selection => stateManager.deleteCanvasSelection(selection));
     canvas.setOnSelectionPaste(elements => stateManager.addCanvasElements(elements));
+    canvas.setOnTimelineClipboard(
+      (timelineIds, cut) => stateManager.copyTimelinesToClipboard(timelineIds, cut),
+      () => stateManager.pasteTimelinesFromClipboard(),
+      () => stateManager.hasTimelineClipboard(),
+      () => stateManager.clearTimelineClipboard(),
+    );
     canvas.setOnPasteChapters((chapters, timelineId, position, point) => {
       if (timelineId) stateManager.insertChapters(timelineId, chapters, position);
       else if (point) {
