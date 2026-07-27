@@ -80,6 +80,7 @@ export class TimelineCanvas {
   private lastClickX = 0;
   private lastClickY = 0;
   private selectionCycle: { key: string; x: number; y: number; index: number } | null = null;
+  private crossTypeSelectionCycle: { key: string; x: number; y: number; index: number } | null = null;
   private touchStartX = 0;
   private touchStartY = 0;
   private touchPanStart: { x: number; y: number; offsetX: number; offsetY: number; distance: number; zoom: number } | null = null;
@@ -682,7 +683,10 @@ export class TimelineCanvas {
           && Math.abs(mouseY - this.lastClickY) < 10;
         const isCyclingOverlap = this.selectionCycle !== null
           && Math.abs(mouseX - this.selectionCycle.x) < 6
-          && Math.abs(mouseY - this.selectionCycle.y) < 6;
+          && Math.abs(mouseY - this.selectionCycle.y) < 6
+          || this.crossTypeSelectionCycle !== null
+          && Math.abs(mouseX - this.crossTypeSelectionCycle.x) < 6
+          && Math.abs(mouseY - this.crossTypeSelectionCycle.y) < 6;
         this.lastClickTime = now;
         this.lastClickX = mouseX;
         this.lastClickY = mouseY;
@@ -736,7 +740,22 @@ export class TimelineCanvas {
           }
         }
 
-        const clickedBranchId = this.getClickedBranch(mouseX, mouseY, true);
+        const rawBranchId = this.getClickedBranch(mouseX, mouseY);
+        const rawLineId = this.getClickedLine(mouseX, mouseY);
+        const rawTimeline = this.isDraggableTimelineElement(mouseX, mouseY);
+        const rawChapter = this.isDraggableChapterElement(mouseX, mouseY);
+        const rawArc = this.isDraggableArcElement(mouseX, mouseY);
+        const rawTextbox = this.getClickedTextboxElement(mouseX, mouseY);
+        const selectionKind = this.getCycledSelectionKind([
+          rawBranchId ? 'branch' : null,
+          rawLineId ? 'line' : null,
+          rawTimeline?.isDraggable ? 'timeline' : null,
+          rawChapter ? 'chapter' : null,
+          rawArc ? 'arc' : null,
+          rawTextbox ? 'textbox' : null,
+        ], mouseX, mouseY);
+
+        const clickedBranchId = selectionKind === 'branch' ? this.getClickedBranch(mouseX, mouseY, true) : null;
         if (clickedBranchId) {
           this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedBranchIds.add(clickedBranchId);
@@ -746,7 +765,7 @@ export class TimelineCanvas {
           return;
         }
 
-        const clickedLineId = this.getClickedLine(mouseX, mouseY, true);
+        const clickedLineId = selectionKind === 'line' ? this.getClickedLine(mouseX, mouseY, true) : null;
         if (clickedLineId) {
           this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedLineIds.add(clickedLineId);
@@ -758,7 +777,7 @@ export class TimelineCanvas {
 
         // Check if clicking on draggable timeline element (title, head, or tail)
         // Use a small delay before starting drag to allow double-click detection
-        const draggableElement = this.isDraggableTimelineElement(mouseX, mouseY);
+        const draggableElement = selectionKind === 'timeline' ? rawTimeline : null;
         if (draggableElement?.isDraggable) {
           this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedTimelineIds.add(draggableElement.timelineId);
@@ -771,7 +790,7 @@ export class TimelineCanvas {
         }
 
         // Check if clicking on draggable chapter (regular chapters, not Head/Tail)
-        const draggableChapter = this.isDraggableChapterElement(mouseX, mouseY);
+        const draggableChapter = selectionKind === 'chapter' ? rawChapter : null;
         if (draggableChapter) {
           this.onBackgroundClick?.();
           const wasSelected = this.selectedChapterIds.has(draggableChapter.chapterId);
@@ -814,7 +833,7 @@ export class TimelineCanvas {
         }
 
         // Check if clicking on draggable arc title (in arc mode)
-        const draggableArc = this.isDraggableArcElement(mouseX, mouseY);
+        const draggableArc = selectionKind === 'arc' ? rawArc : null;
         if (draggableArc) {
           this.onBackgroundClick?.();
           const arcChapterIds = this.getDisplayedArcChapterIds(draggableArc.timelineId, draggableArc.arcId, mouseX);
@@ -842,7 +861,7 @@ export class TimelineCanvas {
         }
 
         // Check if clicking on textbox or its resize handle
-        const textboxClickResult = this.getClickedTextboxElement(mouseX, mouseY, true);
+        const textboxClickResult = selectionKind === 'textbox' ? this.getClickedTextboxElement(mouseX, mouseY, true) : null;
         if (textboxClickResult) {
           this.onBackgroundClick?.();
           if (e.shiftKey) this.selectedTextboxIds.add(textboxClickResult.textboxId);
@@ -974,7 +993,7 @@ export class TimelineCanvas {
         }
 
         // Check if clicking on line body (but not endpoint)
-        const lineClickResult = this.getClickedLine(mouseX, mouseY);
+        const lineClickResult = clickedLineId;
         if (lineClickResult && !this.getClickedLineEndpoint(mouseX, mouseY)) {
           // Start line body drag
           const line = this.lines.find(l => l.id === lineClickResult);
@@ -1056,7 +1075,7 @@ export class TimelineCanvas {
         }
 
         // Check if clicking on line endpoint
-        const lineEndpointClickResult = this.getClickedLineEndpoint(mouseX, mouseY);
+        const lineEndpointClickResult = selectionKind === 'line' ? this.getClickedLineEndpoint(mouseX, mouseY) : null;
         if (lineEndpointClickResult) {
           // Start line endpoint drag with delay
           this.pendingDragLineEndpointLineId = lineEndpointClickResult.lineId;
@@ -2233,6 +2252,29 @@ export class TimelineCanvas {
       textboxIds: [...this.selectedTextboxIds],
       lineIds: [...this.selectedLineIds],
     };
+  }
+
+  private getCycledSelectionKind(
+    candidates: Array<'branch' | 'line' | 'timeline' | 'chapter' | 'arc' | 'textbox' | null>,
+    mouseX: number,
+    mouseY: number,
+  ): 'branch' | 'line' | 'timeline' | 'chapter' | 'arc' | 'textbox' | null {
+    const available = candidates.filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null);
+    if (!available.length) {
+      this.crossTypeSelectionCycle = null;
+      return null;
+    }
+    if (available.length === 1) {
+      this.crossTypeSelectionCycle = null;
+      return available[0];
+    }
+    const key = available.join('|');
+    const sameSpot = this.crossTypeSelectionCycle?.key === key
+      && Math.abs(this.crossTypeSelectionCycle.x - mouseX) < 6
+      && Math.abs(this.crossTypeSelectionCycle.y - mouseY) < 6;
+    const index = sameSpot ? (this.crossTypeSelectionCycle!.index + 1) % available.length : 0;
+    this.crossTypeSelectionCycle = { key, x: mouseX, y: mouseY, index };
+    return available[index];
   }
 
   /** A plain click starts a new selection; modifiers alter the existing group. */
