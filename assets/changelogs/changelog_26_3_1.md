@@ -49,3 +49,4 @@
 - Fixed branches incorrectly giving outdated version message when attached to the head or tail of a timeline.
 - Fixed object selection being lost when the click also closed an active editor.
 - Fixed group drags collapsing to a single object when dragging an object that was already selected.
+- Fixed the second click in an overlap-selection cycle opening the editor instead of selecting the next object.

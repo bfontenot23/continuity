@@ -680,11 +680,14 @@ export class TimelineCanvas {
         const isDoubleClick = now - this.lastClickTime < 300
           && Math.abs(mouseX - this.lastClickX) < 10
           && Math.abs(mouseY - this.lastClickY) < 10;
+        const isCyclingOverlap = this.selectionCycle !== null
+          && Math.abs(mouseX - this.selectionCycle.x) < 6
+          && Math.abs(mouseY - this.selectionCycle.y) < 6;
         this.lastClickTime = now;
         this.lastClickX = mouseX;
         this.lastClickY = mouseY;
 
-        if (isDoubleClick && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+        if (isDoubleClick && !isCyclingOverlap && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
           // Clear any pending drag
           if (this.dragDelayTimer) {
             clearTimeout(this.dragDelayTimer);
