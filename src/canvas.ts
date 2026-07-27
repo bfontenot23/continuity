@@ -735,26 +735,7 @@ export class TimelineCanvas {
           else if (!this.selectedTimelineIds.has(draggableElement.timelineId)) this.selectOnly(this.selectedTimelineIds, draggableElement.timelineId);
           this.render();
           if (e.metaKey || e.ctrlKey) return;
-          this.pendingDragTimelineId = draggableElement.timelineId;
-          this.timelineDragStartX = mouseX;
-          this.timelineDragStartY = mouseY;
-          
-          const timeline = this.timelines.find(t => t.id === draggableElement.timelineId);
-          if (timeline) {
-            this.selectedTimelineDragOrigins = new Map(this.timelines.filter(candidate => this.selectedTimelineIds.has(candidate.id)).map(candidate => [candidate.id, { x: candidate.x, y: candidate.y }]));
-            this.selectedTextboxDragOrigins = new Map(this.textboxes.filter(candidate => this.selectedTextboxIds.has(candidate.id)).map(candidate => [candidate.id, { x: candidate.x, y: candidate.y }]));
-            this.mixedLineDragOrigins = new Map(this.lines.filter(candidate => this.selectedLineIds.has(candidate.id)).map(candidate => [candidate.id, { gridX1: candidate.gridX1, gridY1: candidate.gridY1, gridX2: candidate.gridX2, gridY2: candidate.gridY2 }]));
-          }
-          
-          // Delay drag start to allow double-click detection
-          this.dragDelayTimer = window.setTimeout(() => {
-            if (this.pendingDragTimelineId) {
-              this.isDraggingTimeline = true;
-              this.draggedTimelineId = this.pendingDragTimelineId;
-              this.canvas.style.cursor = 'move';
-            }
-            this.dragDelayTimer = null;
-          }, 150);
+          this.prepareTimelineDrag(draggableElement.timelineId, mouseX, mouseY);
           return;
         }
 
@@ -762,6 +743,17 @@ export class TimelineCanvas {
         const draggableChapter = this.isDraggableChapterElement(mouseX, mouseY);
         if (draggableChapter) {
           this.onBackgroundClick?.();
+          const wasSelected = this.selectedChapterIds.has(draggableChapter.chapterId);
+          const parentTimelineSelected = this.selectedTimelineIds.has(draggableChapter.timelineId);
+          const chapterTimelineCount = this.getSelectedChapterTimelineIds().size;
+          const dragAsTimelineGroup = !e.shiftKey && !e.metaKey && !e.ctrlKey
+            && (parentTimelineSelected
+              || (wasSelected && (chapterTimelineCount > 1 || this.selectedTextboxIds.size > 0 || this.selectedLineIds.size > 0)));
+          if (dragAsTimelineGroup) {
+            this.prepareTimelineDrag(draggableChapter.timelineId, mouseX, mouseY);
+            this.render();
+            return;
+          }
           if (e.shiftKey) this.selectedChapterIds.add(draggableChapter.chapterId);
           else if (e.metaKey || e.ctrlKey) this.selectedChapterIds.delete(draggableChapter.chapterId);
           else if (!this.selectedChapterIds.has(draggableChapter.chapterId)) this.selectOnly(this.selectedChapterIds, draggableChapter.chapterId);
@@ -929,7 +921,8 @@ export class TimelineCanvas {
               this.selectedTextboxDragOrigins = new Map(
                 this.textboxes.filter(item => this.selectedTextboxIds.has(item.id)).map(item => [item.id, { x: item.x, y: item.y }]),
               );
-              this.mixedTimelineDragOrigins = new Map(this.timelines.filter(item => this.selectedTimelineIds.has(item.id)).map(item => [item.id, { x: item.x, y: item.y }]));
+              const associatedTimelineIds = this.getAssociatedTimelineIds();
+              this.mixedTimelineDragOrigins = new Map(this.timelines.filter(item => associatedTimelineIds.has(item.id)).map(item => [item.id, { x: item.x, y: item.y }]));
               this.mixedLineDragOrigins = new Map(this.lines.filter(item => this.selectedLineIds.has(item.id)).map(item => [item.id, { gridX1: item.gridX1, gridY1: item.gridY1, gridX2: item.gridX2, gridY2: item.gridY2 }]));
             }
             
@@ -960,7 +953,8 @@ export class TimelineCanvas {
               gridX1: candidate.gridX1, gridY1: candidate.gridY1, gridX2: candidate.gridX2, gridY2: candidate.gridY2,
             }]));
             this.selectedTextboxDragOrigins = new Map(this.textboxes.filter(candidate => this.selectedTextboxIds.has(candidate.id)).map(candidate => [candidate.id, { x: candidate.x, y: candidate.y }]));
-            this.mixedTimelineDragOrigins = new Map(this.timelines.filter(candidate => this.selectedTimelineIds.has(candidate.id)).map(candidate => [candidate.id, { x: candidate.x, y: candidate.y }]));
+            const associatedTimelineIds = this.getAssociatedTimelineIds();
+            this.mixedTimelineDragOrigins = new Map(this.timelines.filter(candidate => associatedTimelineIds.has(candidate.id)).map(candidate => [candidate.id, { x: candidate.x, y: candidate.y }]));
 
             // Delay drag start to allow double-click detection
             this.dragDelayTimer = window.setTimeout(() => {
@@ -2172,6 +2166,55 @@ export class TimelineCanvas {
   private selectOnly(ids: Set<string>, id: string): void {
     this.clearSelection();
     ids.add(id);
+  }
+
+  private getSelectedChapterTimelineIds(): Set<string> {
+    const ids = new Set<string>();
+    for (const timeline of this.timelines) {
+      if ((timeline.chapters ?? []).some(chapter => this.selectedChapterIds.has(chapter.id))) ids.add(timeline.id);
+    }
+    return ids;
+  }
+
+  private getAssociatedTimelineIds(): Set<string> {
+    const ids = new Set(this.selectedTimelineIds);
+    for (const id of this.getSelectedChapterTimelineIds()) ids.add(id);
+    for (const branch of this.branches) {
+      if (!this.selectedBranchIds.has(branch.id)) continue;
+      ids.add(branch.startContinuityId);
+      ids.add(branch.endContinuityId);
+    }
+    return ids;
+  }
+
+  private prepareTimelineDrag(timelineId: string, mouseX: number, mouseY: number): void {
+    this.pendingDragTimelineId = timelineId;
+    this.timelineDragStartX = mouseX;
+    this.timelineDragStartY = mouseY;
+    const associatedTimelineIds = this.getAssociatedTimelineIds();
+    associatedTimelineIds.add(timelineId);
+    this.selectedTimelineDragOrigins = new Map(this.timelines
+      .filter(candidate => associatedTimelineIds.has(candidate.id))
+      .map(candidate => [candidate.id, { x: candidate.x, y: candidate.y }]));
+    this.selectedTextboxDragOrigins = new Map(this.textboxes
+      .filter(candidate => this.selectedTextboxIds.has(candidate.id))
+      .map(candidate => [candidate.id, { x: candidate.x, y: candidate.y }]));
+    this.mixedLineDragOrigins = new Map(this.lines
+      .filter(candidate => this.selectedLineIds.has(candidate.id))
+      .map(candidate => [candidate.id, {
+        gridX1: candidate.gridX1,
+        gridY1: candidate.gridY1,
+        gridX2: candidate.gridX2,
+        gridY2: candidate.gridY2,
+      }]));
+    this.dragDelayTimer = window.setTimeout(() => {
+      if (this.pendingDragTimelineId) {
+        this.isDraggingTimeline = true;
+        this.draggedTimelineId = this.pendingDragTimelineId;
+        this.canvas.style.cursor = 'move';
+      }
+      this.dragDelayTimer = null;
+    }, 150);
   }
 
   private getContiguousSelectedChapterIds(timelineId: string, chapterId: string): string[] {
