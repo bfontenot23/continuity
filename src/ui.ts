@@ -892,6 +892,14 @@ export class UIComponents {
               style="resize: vertical; min-height: 80px;"
             >${project.description || ''}</textarea>
           </div>
+          <div class="form-group">
+            <label for="text-size">Text Size</label>
+            <select id="text-size" name="text-size" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 100%; font-size: 0.95rem;">
+              <option value="small" ${project.textSize === 'small' ? 'selected' : ''}>Small (80%)</option>
+              <option value="normal" ${!project.textSize || project.textSize === 'normal' ? 'selected' : ''}>Normal (100%)</option>
+              <option value="large" ${project.textSize === 'large' ? 'selected' : ''}>Large (125%)</option>
+            </select>
+          </div>
           <div class="modal-actions">
             <button type="button" id="modal-cancel" class="btn btn-secondary">Cancel</button>
             <button type="submit" class="btn btn-primary">Save</button>
@@ -925,6 +933,7 @@ export class UIComponents {
 
       titleError.style.display = 'none';
       const description = descInput.value.trim();
+      const textSize = textSizeSelect.value as 'small' | 'normal' | 'large';
       closeModal();
       onSave(title, description, doubleTapInput.value as 'faster' | 'fast' | 'slow', rotationSnappingInput.checked);
     });

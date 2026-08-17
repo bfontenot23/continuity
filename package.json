@@ -4,7 +4,7 @@
   "description": "A web app for planning interconnected stories with branching continuities",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",

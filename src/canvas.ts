@@ -268,6 +268,9 @@ export class TimelineCanvas {
   private suppressMenuRender: boolean = false; // Hide menu for exports/snapshots
   private suppressTextboxRender: boolean = false; // Skip DOM textbox overlay (e.g., offscreen export)
   
+  // Text size scaling (public for direct access when combining viewport and user settings)
+  public textSizeMultiplier: number = 1.0; // Multiplier for all canvas text rendering
+  
   // Callbacks
   private onAddTimeline: ((x: number, y: number) => void) | null = null;
   private onAddChapter: ((timelineId: string, position: number) => void) | null = null;
@@ -704,7 +707,7 @@ export class TimelineCanvas {
         }
 
         // Check if clicking menu item
-        const clickedOptionId = this.menu.getClickedOption(mouseX, mouseY);
+        const clickedOptionId = this.menu.getClickedOption(mouseX, mouseY, this.textSizeMultiplier);
         if (clickedOptionId) {
           // Handle the option click
           if (clickedOptionId === 'new-timeline' && this.onAddTimeline) {
@@ -1386,7 +1389,7 @@ export class TimelineCanvas {
 
       // Update menu hover state
       const previousHoveredOption = this.hoveredMenuOptionId;
-      this.hoveredMenuOptionId = this.menu.getHoveredOption(mouseX, mouseY);
+      this.hoveredMenuOptionId = this.menu.getHoveredOption(mouseX, mouseY, this.textSizeMultiplier);
       
       // Trigger render if hover state changed
       if (previousHoveredOption !== this.hoveredMenuOptionId) {
@@ -2181,6 +2184,21 @@ export class TimelineCanvas {
     this.render();
   }
 
+  setTextSizeMultiplier(size: 'small' | 'normal' | 'large'): void {
+    switch (size) {
+      case 'small':
+        this.textSizeMultiplier = 0.8;
+        break;
+      case 'normal':
+        this.textSizeMultiplier = 1.0;
+        break;
+      case 'large':
+        this.textSizeMultiplier = 1.25;
+        break;
+    }
+    this.render();
+  }
+
   toggleInsertionMode(): void {
     this.placementMode = null;
     this.insertionMode = !this.insertionMode;
@@ -2254,6 +2272,7 @@ export class TimelineCanvas {
     const originalSuppressMenuRender = this.suppressMenuRender;
     const wasMenuOpen = this.menu.isOpen();
     const originalSuppressTextboxRender = this.suppressTextboxRender;
+    const originalTextSizeMultiplier = this.textSizeMultiplier;
 
     // Switch to offscreen rendering context
     this.canvas = tempCanvas;
@@ -2263,6 +2282,9 @@ export class TimelineCanvas {
     this.zoom = 1;
     this.offsetX = padding - bounds.minX;
     this.offsetY = padding - bounds.minY;
+
+    // Use standard text size for exports (ignore user settings)
+    this.textSizeMultiplier = 1.0;
 
     // Hide menu while exporting
     this.suppressMenuRender = true;
@@ -2283,6 +2305,7 @@ export class TimelineCanvas {
     this.zoom = originalZoom;
     this.suppressMenuRender = originalSuppressMenuRender;
     this.suppressTextboxRender = originalSuppressTextboxRender;
+    this.textSizeMultiplier = originalTextSizeMultiplier;
     if (wasMenuOpen) {
       this.menu.open();
     }
@@ -3147,7 +3170,7 @@ export class TimelineCanvas {
             this.ctx.restore();
           }
           this.ctx.fillStyle = '#333333';
-          this.ctx.font = '12px sans-serif';
+          this.ctx.font = `${12 * this.textSizeMultiplier}px sans-serif`;
           this.ctx.textBaseline = 'bottom';
           this.ctx.textAlign = 'center';
           
@@ -3185,10 +3208,12 @@ export class TimelineCanvas {
         
         // Draw arc title centered above the arc group
         this.ctx.fillStyle = darkenedColor;
-        this.ctx.font = 'bold 13px sans-serif';
+        this.ctx.font = `bold ${13 * this.textSizeMultiplier}px sans-serif`;
         this.ctx.textBaseline = 'bottom';
         this.ctx.textAlign = 'center';
-        this.ctx.fillText(arc.name, centerX, screenY - 28);
+        // Adjust Y position based on text size to prevent overlap
+        const arcTextYOffset = 28 + (this.textSizeMultiplier - 1) * 5;
+        this.ctx.fillText(arc.name, centerX, screenY - arcTextYOffset);
       });
 
       // Draw arrow at the end (unless tail is hidden by a branch)
@@ -3285,7 +3310,7 @@ export class TimelineCanvas {
 
       // Draw timeline title
       this.ctx.fillStyle = '#333333';
-      this.ctx.font = '14px sans-serif';
+      this.ctx.font = `${14 * this.textSizeMultiplier}px sans-serif`;
       this.ctx.textBaseline = 'middle';
       this.ctx.textAlign = 'right';
       const titleGap = 10;
@@ -3740,7 +3765,7 @@ export class TimelineCanvas {
       const screenY = timeline.y * this.zoom + this.offsetY;
 
       // Check if clicking on timeline title (now positioned to the left of timeline)
-      this.ctx.font = '14px sans-serif';
+      this.ctx.font = `${14 * this.textSizeMultiplier}px sans-serif`;
       this.ctx.textAlign = 'right';
       const titleMetrics = this.ctx.measureText(timeline.name);
       const titleGap = 10; // Same gap used when drawing
@@ -3784,7 +3809,7 @@ export class TimelineCanvas {
       let hit = false;
 
       // Check title area
-      this.ctx.font = '14px sans-serif';
+      this.ctx.font = `${14 * this.textSizeMultiplier}px sans-serif`;
       this.ctx.textAlign = 'right';
       const titleMetrics = this.ctx.measureText(timeline.name);
       const titleGap = 10;
@@ -3908,7 +3933,7 @@ export class TimelineCanvas {
         const centerX = (startX + endX) / 2;
 
         // Calculate text bounds
-        this.ctx.font = 'bold 13px sans-serif';
+        this.ctx.font = `bold ${13 * this.textSizeMultiplier}px sans-serif`;
         const textMetrics = this.ctx.measureText(arc.name);
         const textWidth = textMetrics.width;
         const textHeight = 16; // Approximate

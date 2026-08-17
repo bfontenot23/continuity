@@ -14,6 +14,15 @@ type SidebarData = Parameters<typeof UIComponents.createEditSidebar>[1];
  * Main application entry point
  */
 
+// Calculate base text scale for high-resolution displays
+function getBaseTextScale(): number {
+  // Apply 125% base scale on screens wider than 1800px
+  // Uses screen.width (not window.innerWidth) so it persists regardless of browser size
+  // This accounts for the topbar max-width of 1400px + margins
+  // On very wide displays, the extra space makes default text too small
+  return window.screen.width > 1800 ? 1.25 : 1.0;
+}
+
 const stateManager = new AppStateManager();
 let currentEditSidebar: HTMLElement | null = null;
 let currentEditSidebarBackdrop: HTMLButtonElement | null = null;
@@ -224,6 +233,14 @@ function initializeApp() {
             doubleTapSpeed,
             rotationSnapping,
           });
+          // Update canvas text size with combined scale
+          if (canvasInstance) {
+            const baseScale = getBaseTextScale();
+            const userScale = textSize === 'small' ? 0.8 : textSize === 'large' ? 1.25 : 1.0;
+            const combinedScale = baseScale * userScale;
+            canvasInstance.textSizeMultiplier = combinedScale;
+            canvasInstance.render();
+          }
         }
       );
       appElement.appendChild(modal);
