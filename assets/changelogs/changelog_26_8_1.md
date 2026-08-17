@@ -1,4 +1,4 @@
-# Continuity Version 26.3.1 Changelog
+# Continuity Version 26.8.1 Changelog
 
 ## What's New
 
