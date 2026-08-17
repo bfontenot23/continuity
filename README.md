@@ -56,7 +56,7 @@ Validates TypeScript without emitting files.
 
 ### Work with Timelines (Continuities)
 Each continuity represents an independent timeline or narrative branch:
-- **Add** – Press `Shift + T` or click menu button to create a new timeline
+- **Add** – Press `Shift + T` or click the menu button, then click a valid canvas location to place a new timeline
 - **Edit** – Double-click a timeline name to edit title and description
 - **Move** – Click and drag a timeline to reposition it on the canvas
 - **Color** – Each timeline gets a unique color for easy identification
@@ -85,10 +85,12 @@ Arcs group adjacent chapters into narrative sections (e.g., "Act 1", "Rising Act
 
 ### Add Annotations
 **Textboxes** – Free-floating text notes with markdown support:
-- **Add** – Press `Shift + S` to create a textbox at canvas center
+- **Add** – Press `Shift + S`, then click the canvas to place a textbox
 - **Edit** – Double-click a textbox to edit content, size, and alignment
 - **Move** – Click and drag to reposition anywhere on canvas
 - **Resize** – Drag corner/edge handles to resize
+
+**Shapes and images** – Place visual annotations with `Shift + W` and `Shift + E`, then click the canvas to choose their location. Shape editors include RGBA fill/outline controls, outline thickness, text alignment, and rotation; shape text is clipped to its outline.
 
 **Lines** – Visual connectors between timeline elements:
 - **Add** – Press `Shift + D` to toggle line insertion mode
@@ -113,11 +115,16 @@ Click **Export** to access export options:
 3. The project loads and becomes your active workspace
 
 ### Keyboard Shortcuts
-- `Shift + T` – New Timeline
+- `Shift + T` – Place New Timeline
 - `Shift + C` – Toggle Chapter Insertion Mode
 - `Shift + B` – Toggle Branch Insertion Mode
-- `Shift + S` – Add Textbox
+- `Shift + S` – Place Textbox
+- `Shift + W` – Place Shape
+- `Shift + E` – Place Image
 - `Shift + D` – Toggle Line Insertion Mode
+- `Escape` – Cancel the active placement or insertion mode
+- `Ctrl/Cmd + Z` – Undo (up to 100 actions)
+- `Ctrl/Cmd + Shift + Z` or `Ctrl/Cmd + Y` – Redo
 
 ### Auto-save & Storage
 - Every change instantly saves to your browser's local storage

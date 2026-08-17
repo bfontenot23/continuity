@@ -14,7 +14,6 @@ type SidebarData = Parameters<typeof UIComponents.createEditSidebar>[1];
 
 const stateManager = new AppStateManager();
 let currentEditSidebar: HTMLElement | null = null;
-let preservedSidebarState: { type: SidebarType; id: string } | null = null;
 
 function initializeApp() {
   const app = document.getElementById('app');
@@ -36,7 +35,6 @@ function initializeApp() {
       currentEditSidebar.remove();
       currentEditSidebar = null;
     }
-    preservedSidebarState = null;
     app?.classList.remove('app-has-sidebar');
   }
 
@@ -56,7 +54,6 @@ function initializeApp() {
     );
     app.appendChild(currentEditSidebar);
     app.classList.add('app-has-sidebar');
-    preservedSidebarState = { type, id: data.id };
   }
 
   function refreshCanvasForSidebar(type: SidebarType, continuity: Continuity | null): void {
@@ -125,6 +122,8 @@ function initializeApp() {
     openEditSidebar('textbox', {
       id: textboxId, content: textbox.content, fontSize: textbox.fontSize,
       alignX: textbox.alignX, alignY: textbox.alignY, shapeType: textbox.shapeType, imageDataUrl: textbox.imageDataUrl, alt: textbox.alt,
+      shapeFillColor: textbox.shapeFillColor, shapeOutlineColor: textbox.shapeOutlineColor,
+      shapeOutlineWidth: textbox.shapeOutlineWidth, rotation: textbox.rotation,
     }, null, autoFocus);
   }
 
@@ -145,15 +144,12 @@ function initializeApp() {
       canvasInstance = null;
     }
     mainWrapper.innerHTML = '';
-    // Save sidebar state before closing
-    const savedSidebarState = preservedSidebarState;
-    closeSidebar();
-
     const state = stateManager.getState();
     const { currentProject } = state;
 
     // If no project, show welcome screen without header
     if (!currentProject) {
+      closeSidebar();
       mainWrapper.appendChild(
         UIComponents.createWelcomeScreen(
           handleNewProject,
@@ -258,8 +254,8 @@ function initializeApp() {
     canvas.setSelectionSnapshot(preservedCanvasSelection);
 
     // Setup canvas callbacks
-    canvas.setOnAddTimeline(() => {
-      handleAddContinuity();
+    canvas.setOnAddTimeline((x, y) => {
+      handleAddContinuity(x, y);
     });
 
     canvas.setOnAddChapter((timelineId: string, position: number) => {
@@ -275,7 +271,10 @@ function initializeApp() {
     });
     canvas.setOnAddShape((x: number, y: number) => handleAddShape(x, y));
     canvas.setOnAddImage((x: number, y: number) => promptForImage(x, y));
-    canvas.setOnHistoryGestures(() => stateManager.undo(), () => stateManager.redo());
+    canvas.setOnHistoryGestures(
+      () => { closeSidebar(); stateManager.undo(); },
+      () => { closeSidebar(); stateManager.redo(); },
+    );
     canvas.setOnSelectionDelete(selection => stateManager.deleteCanvasSelection(selection));
     canvas.setOnSelectionPaste(elements => {
       stateManager.addCanvasElements(elements);
@@ -409,21 +408,6 @@ function initializeApp() {
       return continuity?.chapters || [];
     });
 
-    // Restore sidebar if it was open
-    if (savedSidebarState) {
-      if (savedSidebarState.type === 'timeline') {
-        showTimelineEditSidebar(savedSidebarState.id);
-      } else if (savedSidebarState.type === 'chapter') {
-        showChapterEditSidebar(savedSidebarState.id);
-      } else if (savedSidebarState.type === 'branch') {
-        showBranchEditSidebar(savedSidebarState.id);
-      } else if (savedSidebarState.type === 'textbox') {
-        const textboxId = savedSidebarState.id;
-        showTextboxEditSidebar(textboxId);
-      } else if (savedSidebarState.type === 'line') {
-        showLineEditSidebar(savedSidebarState.id);
-      }
-    }
   }
 
   function openNewProjectModal() {
@@ -432,12 +416,13 @@ function initializeApp() {
   }
 
   function handleNewProject(projectName: string) {
+    closeSidebar();
     const project = createProject(projectName);
     stateManager.setProject(project);
     // renderUI will be triggered by state subscription
   }
 
-  function handleAddContinuity() {
+  function handleAddContinuity(placementX?: number, placementY?: number) {
     const state = stateManager.getState();
     if (!state.currentProject) return;
     
@@ -446,7 +431,10 @@ function initializeApp() {
     // Calculate position for new timeline: same x, 4 gridspaces below the lowest timeline
     let xPosition = 0;
     let yPosition = 0;
-    if (state.currentProject.continuities.length > 0) {
+    if (placementX !== undefined && placementY !== undefined) {
+      xPosition = placementX;
+      yPosition = placementY;
+    } else if (state.currentProject.continuities.length > 0) {
       const lowestContinuity = state.currentProject.continuities.reduce((lowest, c) => {
         const lowestY = lowest.y !== undefined ? lowest.y : 0;
         const cY = c.y !== undefined ? c.y : 0;
@@ -519,8 +507,8 @@ function initializeApp() {
     // - End point: anchor to chapter on the RIGHT (whose start is at this position)
     const startContinuity = state.currentProject.continuities.find(c => c.id === startTimelineId);
     const endContinuity = state.currentProject.continuities.find(c => c.id === endTimelineId);
-    const startChapterId = startContinuity ? findChapterToLeft(startContinuity.chapters, startPosition) : undefined;
-    const endChapterId = endContinuity ? findChapterToRight(endContinuity.chapters, endPosition) : undefined;
+    const startChapterId = startContinuity ? findChapterToLeft(startContinuity.chapters, startPosition, startContinuity.headGridLength) : undefined;
+    const endChapterId = endContinuity ? findChapterToRight(endContinuity.chapters, endPosition, endContinuity.headGridLength) : undefined;
 
     // Create branch with chapter associations
     const branch = createBranch(startTimelineId, startPosition, endTimelineId, endPosition);
@@ -639,6 +627,7 @@ function initializeApp() {
         if (appElement) {
           const modal = UIComponents.createVersionWarningModal(versionWarning, () => {
             // User confirmed despite warning
+            closeSidebar();
             stateManager.setProject(project);
             renderUI();
             // Center on the first timeline after import
@@ -650,6 +639,7 @@ function initializeApp() {
         }
       } else {
         // No warning, proceed normally
+        closeSidebar();
         stateManager.setProject(project);
         renderUI();
         // Center on the first timeline after import
@@ -698,22 +688,24 @@ function initializeApp() {
 
     if ((e.ctrlKey || e.metaKey) && !isInInput && e.key.toLowerCase() === 'z') {
       e.preventDefault();
+      closeSidebar();
       if (e.shiftKey) stateManager.redo();
       else stateManager.undo();
       return;
     }
     if ((e.ctrlKey || e.metaKey) && !isInInput && e.key.toLowerCase() === 'y') {
       e.preventDefault();
+      closeSidebar();
       stateManager.redo();
       return;
     }
     
-    // Shift + T: New Timeline
+    // Shift + T: Place New Timeline
     if (e.shiftKey && e.key === 'T' && !isInInput) {
       e.preventDefault();
       const state = stateManager.getState();
-      if (state.currentProject) {
-        handleAddContinuity();
+      if (state.currentProject && canvasInstance) {
+        canvasInstance.togglePlacementMode('timeline');
       }
     }
     
@@ -735,30 +727,22 @@ function initializeApp() {
       }
     }
 
-    // Shift + S: Add Textbox
+    // Shift + S: Place Textbox
     if (e.shiftKey && e.key === 'S' && !isInInput) {
       e.preventDefault();
       const state = stateManager.getState();
       if (state.currentProject && canvasInstance) {
-        // Create textbox at center of canvas
-        const canvas = canvasInstance.getCanvas();
-        const centerX = (canvas.width / 2) / canvasInstance.getZoom() - canvasInstance.getOffsetX() / canvasInstance.getZoom();
-        const centerY = (canvas.height / 2) / canvasInstance.getZoom() - canvasInstance.getOffsetY() / canvasInstance.getZoom();
-        handleAddTextbox(centerX, centerY);
+        canvasInstance.togglePlacementMode('textbox');
       }
     }
 
     if (e.shiftKey && e.key === 'W' && !isInInput) {
       e.preventDefault();
-      const canvas = canvasInstance?.getCanvas();
-      if (canvas && canvasInstance && stateManager.getState().currentProject) {
-        handleAddShape((canvas.width / 2 - canvasInstance.getOffsetX()) / canvasInstance.getZoom(), (canvas.height / 2 - canvasInstance.getOffsetY()) / canvasInstance.getZoom());
-      }
+      if (canvasInstance && stateManager.getState().currentProject) canvasInstance.togglePlacementMode('shape');
     }
     if (e.shiftKey && e.key === 'E' && !isInInput) {
       e.preventDefault();
-      const canvas = canvasInstance?.getCanvas();
-      if (canvas && canvasInstance && stateManager.getState().currentProject) promptForImage((canvas.width / 2 - canvasInstance.getOffsetX()) / canvasInstance.getZoom(), (canvas.height / 2 - canvasInstance.getOffsetY()) / canvasInstance.getZoom());
+      if (canvasInstance && stateManager.getState().currentProject) canvasInstance.togglePlacementMode('image');
     }
 
     // Shift + D: Toggle Line Insertion Mode

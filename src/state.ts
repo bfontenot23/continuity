@@ -53,7 +53,9 @@ export class AppStateManager {
   private undoStack: Project[] = [];
   private redoStack: Project[] = [];
   private lastProjectSnapshot: Project | null = null;
-  private readonly historyLimit = 20;
+  // Whole-project snapshots are comparatively lightweight for Continuity files.
+  // 100 gives substantial recovery depth while retaining a finite browser-memory bound.
+  private readonly historyLimit = 100;
   private timelineClipboard: { continuities: Continuity[]; branches: Branch[]; elements: CanvasElements } | null = null;
 
   constructor() {
@@ -375,6 +377,11 @@ export class AppStateManager {
   insertChapters(continuityId: string, chapters: Chapter[], targetIndex: number): void {
     const continuity = this.state.currentProject?.continuities.find(candidate => candidate.id === continuityId);
     if (!continuity || !chapters.length) return;
+    const validArcIds = new Set(continuity.arcs.map(arc => arc.id));
+    const fallbackArcId = continuity.arcs[0]?.id;
+    for (const chapter of chapters) {
+      if (chapter.arcId && !validArcIds.has(chapter.arcId)) chapter.arcId = fallbackArcId;
+    }
     const sorted = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
     const index = Math.max(0, Math.min(sorted.length, targetIndex));
     sorted.splice(index, 0, ...chapters);
@@ -424,32 +431,35 @@ export class AppStateManager {
    * - For end points: Link to the chapter immediately AFTER the deleted chapter
    */
   private updateBranchReferencesAfterChapterDeletion(continuity: Continuity, deletedChapterId: string): void {
+    this.updateBranchReferencesAfterChapterDeletions(continuity, new Set([deletedChapterId]));
+  }
+
+  /** Retarget branch anchors around a chapter group without ever pointing at another deleted chapter. */
+  private updateBranchReferencesAfterChapterDeletions(continuity: Continuity, deletedChapterIds: ReadonlySet<string>): void {
     if (!this.state.currentProject) return;
 
-    // Find the deleted chapter's position in the sequence
     const sortedChapters = [...continuity.chapters].sort((a, b) => a.timestamp - b.timestamp);
-    const deletedIndex = sortedChapters.findIndex(ch => ch.id === deletedChapterId);
-    if (deletedIndex === -1) return;
-
-    // Get adjacent chapters
-    const chapterBefore = deletedIndex > 0 ? sortedChapters[deletedIndex - 1] : undefined;
-    const chapterAfter = deletedIndex < sortedChapters.length - 1 ? sortedChapters[deletedIndex + 1] : undefined;
+    const deletedIndexes = new Map(sortedChapters
+      .map((chapter, index) => [chapter.id, index] as const)
+      .filter(([id]) => deletedChapterIds.has(id)));
+    if (!deletedIndexes.size) return;
 
     // Update all branches in all continuities that reference the deleted chapter
     this.state.currentProject.continuities.forEach(cont => {
       if (!cont.branches) return;
       
       cont.branches.forEach(branch => {
-        // Update start chapter reference if it matches deleted chapter
-        // Start point should link to chapter BEFORE deleted chapter
-        if (branch.startContinuityId === continuity.id && branch.startChapterId === deletedChapterId) {
-          branch.startChapterId = chapterBefore?.id; // Will be undefined if no chapter before
+        if (branch.startContinuityId === continuity.id && branch.startChapterId && deletedChapterIds.has(branch.startChapterId)) {
+          const index = deletedIndexes.get(branch.startChapterId)!;
+          branch.startChapterId = [...sortedChapters.slice(0, index)]
+            .reverse()
+            .find(chapter => !deletedChapterIds.has(chapter.id))?.id;
         }
-        
-        // Update end chapter reference if it matches deleted chapter
-        // End point should link to chapter AFTER deleted chapter
-        if (branch.endContinuityId === continuity.id && branch.endChapterId === deletedChapterId) {
-          branch.endChapterId = chapterAfter?.id; // Will be undefined if no chapter after
+
+        if (branch.endContinuityId === continuity.id && branch.endChapterId && deletedChapterIds.has(branch.endChapterId)) {
+          const index = deletedIndexes.get(branch.endChapterId)!;
+          branch.endChapterId = sortedChapters.slice(index + 1)
+            .find(chapter => !deletedChapterIds.has(chapter.id))?.id;
         }
       });
     });
@@ -1008,9 +1018,10 @@ export class AppStateManager {
 
     project.continuities = project.continuities.filter(continuity => !timelineIds.has(continuity.id));
     for (const continuity of project.continuities) {
-      for (const chapterId of chapterIds) {
-        if (continuity.chapters.some(chapter => chapter.id === chapterId)) this.updateBranchReferencesAfterChapterDeletion(continuity, chapterId);
-      }
+      const deletedFromTimeline = new Set(continuity.chapters
+        .filter(chapter => chapterIds.has(chapter.id))
+        .map(chapter => chapter.id));
+      if (deletedFromTimeline.size) this.updateBranchReferencesAfterChapterDeletions(continuity, deletedFromTimeline);
       continuity.chapters = continuity.chapters.filter(chapter => !chapterIds.has(chapter.id));
       continuity.branches = (continuity.branches || []).filter(branch =>
         !branchIds.has(branch.id)

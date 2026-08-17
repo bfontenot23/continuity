@@ -58,26 +58,36 @@ render(textboxes: Textbox[], viewport: TextboxOverlayViewport, hoveredTextboxId:
       this.elements.set(textbox.id, element);
     }
     
-    // Update position and size - use world coordinates, let CSS scale handle zoom
-    element.style.left = (screenX * viewport.zoom) + 'px';
-    element.style.top = (screenY * viewport.zoom) + 'px';
+    // Update position and size. Rotated shapes scale around their center, so
+    // compensate the unscaled DOM box to keep it aligned with the canvas shape.
+    const screenLeft = screenX * viewport.zoom;
+    const screenTop = screenY * viewport.zoom;
+    element.style.left = (screenLeft + (textbox.shapeType ? textbox.width * (viewport.zoom - 1) / 2 : 0)) + 'px';
+    element.style.top = (screenTop + (textbox.shapeType ? textbox.height * (viewport.zoom - 1) / 2 : 0)) + 'px';
     element.style.width = textbox.width + 'px';
     element.style.height = textbox.height + 'px';
-    element.style.transform = `scale(${viewport.zoom})`;
-    element.style.transformOrigin = 'top left';
+    const rotation = textbox.shapeType ? (textbox.rotation ?? 0) : 0;
+    element.style.transform = `scale(${viewport.zoom}) rotate(${rotation}deg)`;
+    element.style.transformOrigin = textbox.shapeType ? 'center center' : 'top left';
     // Font size stays at model value - CSS scale handles zoom uniformly
     element.style.fontSize = textbox.fontSize + 'px';
     element.style.lineHeight = (textbox.fontSize * 1.4) + 'px';
     
     // Apply text alignment (horizontal) and fixed vertical alignment via flexbox
-    const textAlign = textbox.alignX || 'left';
+    const textAlign = textbox.alignX || (textbox.shapeType ? 'center' : 'left');
     element.style.textAlign = textAlign;
-    const verticalAlign = textbox.alignY || 'top';
+    const verticalAlign = textbox.alignY || (textbox.shapeType ? 'middle' : 'top');
     element.style.display = 'flex';
     element.style.flexDirection = 'column';
     element.style.justifyContent = verticalAlign === 'middle' ? 'center' : verticalAlign === 'bottom' ? 'flex-end' : 'flex-start';
     element.style.paddingTop = '8px';
     element.style.paddingBottom = '8px';
+    element.style.overflow = textbox.shapeType ? 'hidden' : 'auto';
+    element.style.clipPath = textbox.shapeType === 'circle'
+      ? 'ellipse(50% 50% at 50% 50%)'
+      : textbox.shapeType === 'triangle'
+        ? 'polygon(50% 0%, 100% 100%, 0% 100%)'
+        : textbox.shapeType === 'square' ? 'inset(0)' : 'none';
     
     // Update content if changed - preserve blank lines while supporting markdown
     const processContent = () => {
@@ -99,7 +109,7 @@ render(textboxes: Textbox[], viewport: TextboxOverlayViewport, hoveredTextboxId:
       // scrollHeight is unaffected by CSS transform, so compare directly
       // Add small threshold to prevent infinite micro-adjustments
       const contentHeight = element.scrollHeight;
-      if (contentHeight > textbox.height + 2) {
+      if (!textbox.shapeType && contentHeight > textbox.height + 2) {
         textbox.height = contentHeight;
       }
     }

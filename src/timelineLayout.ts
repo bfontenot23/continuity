@@ -37,11 +37,11 @@ export function getChapterPositions(chapters: readonly Chapter[], headGridLength
   return positions;
 }
 
-export function findChapterToLeft(chapters: readonly Chapter[], gridPosition: number): string | undefined {
+export function findChapterToLeft(chapters: readonly Chapter[], gridPosition: number, headGridLength: number = TIMELINE_HEAD_WIDTH): string | undefined {
   const sortedChapters = sortChapters(chapters);
   if (sortedChapters.length === 0) return undefined;
 
-  const positions = getChapterPositions(sortedChapters);
+  const positions = getChapterPositions(sortedChapters, headGridLength);
   const firstChapter = sortedChapters[0];
   const lastChapter = sortedChapters[sortedChapters.length - 1];
   const lastPosition = positions.get(lastChapter.id)!;
@@ -51,16 +51,18 @@ export function findChapterToLeft(chapters: readonly Chapter[], gridPosition: nu
     if (Math.abs(gridPosition - (position.x + position.width)) < 0.01) return chapter.id;
   }
 
-  if (gridPosition < TIMELINE_HEAD_WIDTH) return firstChapter.id;
+  // The synthetic head has no persisted chapter ID, so its far boundary also
+  // anchors to the first real chapter for stable branch recalculation.
+  if (gridPosition <= Math.max(1, headGridLength) + 0.01) return firstChapter.id;
   if (gridPosition >= lastPosition.x + lastPosition.width) return lastChapter.id;
   return undefined;
 }
 
-export function findChapterToRight(chapters: readonly Chapter[], gridPosition: number): string | undefined {
+export function findChapterToRight(chapters: readonly Chapter[], gridPosition: number, headGridLength: number = TIMELINE_HEAD_WIDTH): string | undefined {
   const sortedChapters = sortChapters(chapters);
   if (sortedChapters.length === 0) return undefined;
 
-  const positions = getChapterPositions(sortedChapters);
+  const positions = getChapterPositions(sortedChapters, headGridLength);
   const firstChapter = sortedChapters[0];
   const lastChapter = sortedChapters[sortedChapters.length - 1];
   const lastPosition = positions.get(lastChapter.id)!;
@@ -70,7 +72,7 @@ export function findChapterToRight(chapters: readonly Chapter[], gridPosition: n
     if (Math.abs(gridPosition - position.x) < 0.01) return chapter.id;
   }
 
-  if (gridPosition < TIMELINE_HEAD_WIDTH) return firstChapter.id;
+  if (gridPosition < Math.max(1, headGridLength)) return firstChapter.id;
   if (gridPosition >= lastPosition.x + lastPosition.width) return lastChapter.id;
   return undefined;
 }

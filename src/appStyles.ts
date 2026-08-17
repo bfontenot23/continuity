@@ -547,6 +547,23 @@ export function createAppStyles(): HTMLStyleElement {
       gap: 0.5rem;
     }
 
+    .rgba-control-row {
+      display: grid;
+      grid-template-columns: 52px auto minmax(80px, 1fr) 72px;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .rgba-control-row input[type="color"] {
+      width: 52px;
+      height: 36px;
+      padding: 2px;
+    }
+
+    .rgba-control-row input[type="range"] {
+      min-width: 80px;
+    }
+
     .form-group label {
       font-weight: 600;
       font-size: 0.9rem;

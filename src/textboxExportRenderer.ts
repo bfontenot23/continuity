@@ -20,8 +20,16 @@ offsetY: number,
 
     // Text only (no background or outline)
     ctx.save();
+    if (tb.shapeType && tb.rotation) {
+      ctx.translate(screenX + width / 2, screenY + height / 2);
+      ctx.rotate((tb.rotation * Math.PI) / 180);
+      ctx.translate(-(screenX + width / 2), -(screenY + height / 2));
+    }
     ctx.beginPath();
-    ctx.rect(screenX, screenY, width, height);
+    if (tb.shapeType === 'circle') ctx.ellipse(screenX + width / 2, screenY + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
+    else if (tb.shapeType === 'triangle') {
+      ctx.moveTo(screenX + width / 2, screenY); ctx.lineTo(screenX + width, screenY + height); ctx.lineTo(screenX, screenY + height); ctx.closePath();
+    } else ctx.rect(screenX, screenY, width, height);
     ctx.clip();
 
     const fontSize = tb.fontSize * zoom;
@@ -31,8 +39,8 @@ offsetY: number,
     ctx.textBaseline = 'top';
 
     const maxTextWidth = width - padding * 2;
-    const alignX = tb.alignX || 'left';
-    const alignY = tb.alignY || 'top';
+    const alignX = tb.alignX || (tb.shapeType ? 'center' : 'left');
+    const alignY = tb.alignY || (tb.shapeType ? 'middle' : 'top');
 
     const raw = (tb.content || '').replace(/\r\n/g, '\n');
     const paragraphs = raw.split('\n');

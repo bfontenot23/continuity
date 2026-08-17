@@ -1,6 +1,8 @@
 /** Dedicated builder for the edit-sidebar workflow. */
 import { Arc, Continuity, createArc } from './types';
 import { AppStateManager } from './state';
+import { normalizeRotation, parseRgbaColor, rgbaToCss, rgbaToHex, RgbaColor } from './shapeStyle';
+import { hasLegacyBranchAnchors } from './branchBehavior';
 
 export type SidebarType = 'timeline' | 'chapter' | 'branch' | 'textbox' | 'line';
 export interface SidebarData {
@@ -25,6 +27,10 @@ export interface SidebarData {
   alignX?: 'left' | 'center' | 'right';
   alignY?: 'top' | 'middle' | 'bottom';
   shapeType?: 'square' | 'circle' | 'triangle';
+  shapeFillColor?: string;
+  shapeOutlineColor?: string;
+  shapeOutlineWidth?: number;
+  rotation?: number;
   imageDataUrl?: string;
   alt?: string;
 }
@@ -48,26 +54,12 @@ export function createEditSidebar(
   const sidebar = document.createElement('div');
   sidebar.className = 'edit-sidebar';
 
-  let pointerInteractionInsideSidebar = false;
-  sidebar.addEventListener('pointerdown', () => {
-    pointerInteractionInsideSidebar = true;
-  });
-  sidebar.addEventListener('pointerup', () => {
-    // The blur notification is queued before pointerup, so it can still see
-    // this flag and avoid rebuilding the sidebar during an internal click.
-    window.setTimeout(() => {
-      pointerInteractionInsideSidebar = false;
-    }, 0);
-  });
-
-  // A blur occurs before the click that caused it. Delay UI notifications so a
-  // click on another sidebar control can complete without replacing that control.
+  // Commit after blur. The sidebar is an independent layer, so state-driven
+  // canvas redraws no longer replace the control that the user just clicked.
   const notifyAfterFieldBlur = (notify: () => void, refreshCanvas: boolean = false): void => {
     window.setTimeout(() => {
       if (refreshCanvas) dependencies.refreshCanvasAfterFieldBlur?.();
-      if (!sidebar.isConnected || (!pointerInteractionInsideSidebar && !sidebar.contains(document.activeElement))) {
-        notify();
-      }
+      notify();
     }, 0);
   };
 
@@ -112,7 +104,11 @@ export function createEditSidebar(
     nameInput.addEventListener('input', () => {
       if (continuity) {
         stateManager.updateContinuitySilently(data.id, { name: nameInput.value });
+        dependencies.refreshCanvasAfterFieldBlur?.();
       }
+    });
+    nameInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); nameInput.blur(); }
     });
     nameInput.addEventListener('blur', () => {
       if (continuity) {
@@ -441,7 +437,11 @@ export function createEditSidebar(
     titleInput.addEventListener('input', () => {
       if (continuity) {
         stateManager.updateChapterSilently(continuity.id, data.id, { title: titleInput.value });
+        dependencies.refreshCanvasAfterFieldBlur?.();
       }
+    });
+    titleInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); titleInput.blur(); }
     });
     titleInput.addEventListener('blur', () => {
       if (continuity) {
@@ -579,6 +579,66 @@ export function createEditSidebar(
       });
       shapeSelect.addEventListener('change', () => stateManager.updateTextbox(data.id, { shapeType: shapeSelect.value as 'square' | 'circle' | 'triangle' }));
       shapeGroup.append(shapeLabel, shapeSelect); content.appendChild(shapeGroup);
+
+      const previewShapeUpdate = (updates: Parameters<AppStateManager['updateTextbox']>[1]) => {
+        stateManager.updateTextboxSilently(data.id, updates);
+        dependencies.refreshTextboxPreview?.();
+      };
+      const commitShapeUpdate = (updates: Parameters<AppStateManager['updateTextbox']>[1]) => stateManager.updateTextbox(data.id, updates);
+      addRgbaInput(
+        content, 'Fill Color', 'shape-fill-color', data.shapeFillColor,
+        { r: 102, g: 126, b: 234, a: 0.15 },
+        value => previewShapeUpdate({ shapeFillColor: value }),
+        value => commitShapeUpdate({ shapeFillColor: value }),
+      );
+      addRgbaInput(
+        content, 'Outline Color', 'shape-outline-color', data.shapeOutlineColor,
+        { r: 102, g: 126, b: 234, a: 1 },
+        value => previewShapeUpdate({ shapeOutlineColor: value }),
+        value => commitShapeUpdate({ shapeOutlineColor: value }),
+      );
+
+      const outlineWidthGroup = document.createElement('div');
+      outlineWidthGroup.className = 'form-group';
+      const outlineWidthLabel = document.createElement('label');
+      outlineWidthLabel.htmlFor = 'shape-outline-width';
+      outlineWidthLabel.textContent = 'Outline Width (px)';
+      const outlineWidthInput = document.createElement('input');
+      outlineWidthInput.id = 'shape-outline-width';
+      outlineWidthInput.type = 'number'; outlineWidthInput.min = '0'; outlineWidthInput.max = '40'; outlineWidthInput.step = '1';
+      outlineWidthInput.value = String(data.shapeOutlineWidth ?? 2);
+      const readOutlineWidth = () => Math.min(40, Math.max(0, Number(outlineWidthInput.value) || 0));
+      outlineWidthInput.addEventListener('input', () => previewShapeUpdate({ shapeOutlineWidth: readOutlineWidth() }));
+      outlineWidthInput.addEventListener('change', () => {
+        const value = readOutlineWidth(); outlineWidthInput.value = String(value); commitShapeUpdate({ shapeOutlineWidth: value });
+      });
+      outlineWidthGroup.append(outlineWidthLabel, outlineWidthInput); content.appendChild(outlineWidthGroup);
+
+      const rotationGroup = document.createElement('div');
+      rotationGroup.className = 'form-group';
+      const rotationLabel = document.createElement('label');
+      rotationLabel.htmlFor = 'shape-rotation'; rotationLabel.textContent = 'Rotation (degrees)';
+      const rotationRange = document.createElement('input');
+      rotationRange.type = 'range'; rotationRange.min = '0'; rotationRange.max = '359'; rotationRange.step = '1';
+      rotationRange.value = String(normalizeRotation(data.rotation ?? 0));
+      const rotationNumber = document.createElement('input');
+      rotationNumber.id = 'shape-rotation'; rotationNumber.type = 'number'; rotationNumber.step = '1';
+      rotationNumber.value = rotationRange.value;
+      const previewRotation = (raw: string) => {
+        const value = normalizeRotation(Number(raw));
+        rotationRange.value = String(value); rotationNumber.value = String(value);
+        previewShapeUpdate({ rotation: value });
+      };
+      const commitRotation = (raw: string) => {
+        const value = normalizeRotation(Number(raw));
+        rotationRange.value = String(value); rotationNumber.value = String(value);
+        commitShapeUpdate({ rotation: value });
+      };
+      rotationRange.addEventListener('input', () => previewRotation(rotationRange.value));
+      rotationRange.addEventListener('change', () => commitRotation(rotationRange.value));
+      rotationNumber.addEventListener('input', () => previewRotation(rotationNumber.value));
+      rotationNumber.addEventListener('change', () => commitRotation(rotationNumber.value));
+      rotationGroup.append(rotationLabel, rotationRange, rotationNumber); content.appendChild(rotationGroup);
     }
     if (data.imageDataUrl !== undefined) {
       const altGroup = document.createElement('div'); altGroup.className = 'form-group';
@@ -638,7 +698,7 @@ export function createEditSidebar(
     const leftOption = document.createElement('option');
     leftOption.value = 'left';
     leftOption.textContent = 'Left';
-    if ((data.alignX || 'left') === 'left') {
+    if ((data.alignX || (data.shapeType ? 'center' : 'left')) === 'left') {
       leftOption.selected = true;
     }
     alignXSelect.appendChild(leftOption);
@@ -646,7 +706,7 @@ export function createEditSidebar(
     const centerOption = document.createElement('option');
     centerOption.value = 'center';
     centerOption.textContent = 'Center';
-    if (data.alignX === 'center') {
+    if ((data.alignX || (data.shapeType ? 'center' : 'left')) === 'center') {
       centerOption.selected = true;
     }
     alignXSelect.appendChild(centerOption);
@@ -681,7 +741,7 @@ export function createEditSidebar(
     const topOption = document.createElement('option');
     topOption.value = 'top';
     topOption.textContent = 'Top';
-    if ((data.alignY || 'top') === 'top') {
+    if ((data.alignY || (data.shapeType ? 'middle' : 'top')) === 'top') {
       topOption.selected = true;
     }
     alignYSelect.appendChild(topOption);
@@ -689,7 +749,7 @@ export function createEditSidebar(
     const middleOption = document.createElement('option');
     middleOption.value = 'middle';
     middleOption.textContent = 'Middle';
-    if (data.alignY === 'middle') {
+    if ((data.alignY || (data.shapeType ? 'middle' : 'top')) === 'middle') {
       middleOption.selected = true;
     }
     alignYSelect.appendChild(middleOption);
@@ -714,21 +774,15 @@ export function createEditSidebar(
     
     // Check if this is a legacy branch (missing chapter IDs) and show warning
     // Only show warning if at least one timeline has chapters but we still don't have chapter IDs
-    let shouldShowWarning = !data.startChapterId || !data.endChapterId;
-    
-    if (shouldShowWarning && data.startContinuityId && data.endContinuityId) {
-      // Check if both timelines are legitimately empty
-      const state = stateManager.getState();
-      if (state.currentProject) {
-        const startCont = state.currentProject.continuities.find(c => c.id === data.startContinuityId);
-        const endCont = state.currentProject.continuities.find(c => c.id === data.endContinuityId);
-        
-        // If both timelines have no chapters, undefined IDs are expected → no warning
-        if (startCont && endCont && startCont.chapters.length === 0 && endCont.chapters.length === 0) {
-          shouldShowWarning = false;
-        }
-      }
-    }
+    const project = stateManager.getState().currentProject;
+    const shouldShowWarning = !project || !data.startContinuityId || !data.endContinuityId
+      ? true
+      : hasLegacyBranchAnchors({
+        startChapterId: data.startChapterId,
+        endChapterId: data.endChapterId,
+        startContinuityId: data.startContinuityId,
+        endContinuityId: data.endContinuityId,
+      }, project.continuities);
     
     if (shouldShowWarning) {
       const warningDiv = document.createElement('div');
@@ -1065,4 +1119,36 @@ function addLineWidthInput(content: HTMLElement, value: number | undefined, id: 
   });
   group.append(label, input);
   content.appendChild(group);
+}
+
+function addRgbaInput(
+  content: HTMLElement,
+  labelText: string,
+  id: string,
+  value: string | undefined,
+  fallback: RgbaColor,
+  onPreview: (value: string) => void,
+  onCommit: (value: string) => void,
+): void {
+  const color = parseRgbaColor(value, fallback);
+  const group = document.createElement('div'); group.className = 'form-group rgba-control';
+  const label = document.createElement('label'); label.htmlFor = id; label.textContent = labelText;
+  const row = document.createElement('div'); row.className = 'rgba-control-row';
+  const rgbInput = document.createElement('input'); rgbInput.id = id; rgbInput.type = 'color'; rgbInput.value = rgbaToHex(color);
+  const alphaLabel = document.createElement('label'); alphaLabel.textContent = 'Alpha';
+  const alphaInput = document.createElement('input'); alphaInput.type = 'range'; alphaInput.min = '0'; alphaInput.max = '1'; alphaInput.step = '0.01'; alphaInput.value = String(color.a);
+  const alphaNumber = document.createElement('input'); alphaNumber.type = 'number'; alphaNumber.min = '0'; alphaNumber.max = '1'; alphaNumber.step = '0.01'; alphaNumber.value = String(Math.round(color.a * 100) / 100);
+  const read = (): string => {
+    const rgb = parseRgbaColor(rgbInput.value, color);
+    const alpha = Math.min(1, Math.max(0, Number(alphaInput.value) || 0));
+    alphaInput.value = String(alpha); alphaNumber.value = String(alpha);
+    return rgbaToCss({ ...rgb, a: alpha });
+  };
+  rgbInput.addEventListener('input', () => onPreview(read()));
+  rgbInput.addEventListener('change', () => onCommit(read()));
+  alphaInput.addEventListener('input', () => { alphaNumber.value = alphaInput.value; onPreview(read()); });
+  alphaInput.addEventListener('change', () => onCommit(read()));
+  alphaNumber.addEventListener('input', () => { alphaInput.value = String(Math.min(1, Math.max(0, Number(alphaNumber.value) || 0))); onPreview(read()); });
+  alphaNumber.addEventListener('change', () => onCommit(read()));
+  row.append(rgbInput, alphaLabel, alphaInput, alphaNumber); group.append(label, row); content.appendChild(group);
 }

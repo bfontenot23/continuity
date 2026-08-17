@@ -81,6 +81,9 @@ test('cutting timelines is one recoverable clipboard operation', () => {
   manager.setProject(fixture());
   assert.equal(manager.copyTimelinesToClipboard(['timeline-a', 'timeline-b'], noElements, true), true);
   assert.equal(manager.getState().currentProject!.continuities.length, 0);
+  manager.undo();
+  assert.deepEqual(manager.getState().currentProject!.continuities.map(item => item.id), ['timeline-a', 'timeline-b']);
+  assert.equal(manager.canUndo(), false, 'the complete timeline cut used one history entry');
   assert.equal(manager.pasteTimelinesFromClipboard().timelineIds.length, 2);
 });
 
@@ -95,4 +98,25 @@ test('timeline clipboard keeps selected floating elements in the same paste', ()
   assert.equal(pasted.timelineIds.length, 1);
   assert.equal(pasted.textboxIds.length, 1);
   assert.equal(pasted.lineIds.length, 1);
+});
+
+test('timeline and mixed floating paste is one undoable operation and preserves element kinds', () => {
+  const manager = new AppStateManager();
+  manager.setProject(fixture());
+  assert.equal(manager.copyTimelinesToClipboard(['timeline-a'], {
+    textboxes: [
+      { id: 'shape', content: 'Shape', x: 10, y: 20, width: 100, height: 100, fontSize: 14, shapeType: 'triangle' },
+      { id: 'image', content: '', x: 30, y: 40, width: 120, height: 90, fontSize: 14, imageDataUrl: 'data:image/png;base64,AA==' },
+    ],
+    lines: [{ id: 'line', gridX1: 0, gridY1: 0, gridX2: 2, gridY2: 2 }],
+  }), true);
+  const pasted = manager.pasteTimelinesFromClipboard();
+  const changed = manager.getState().currentProject!;
+  assert.equal(changed.textboxes?.find(item => item.id === pasted.textboxIds[0])?.shapeType, 'triangle');
+  assert.equal(changed.textboxes?.find(item => item.id === pasted.textboxIds[1])?.imageDataUrl, 'data:image/png;base64,AA==');
+  manager.undo();
+  assert.equal(manager.getState().currentProject!.continuities.length, 2);
+  assert.deepEqual(manager.getState().currentProject!.textboxes, []);
+  assert.deepEqual(manager.getState().currentProject!.lines, []);
+  assert.equal(manager.canUndo(), false);
 });

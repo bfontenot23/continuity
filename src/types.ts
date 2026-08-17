@@ -50,6 +50,14 @@ export interface Textbox {
   alignY?: 'top' | 'middle' | 'bottom'; // Vertical alignment (default: top)
   /** When present this textbox is rendered as a shape, retaining markdown text behavior. */
   shapeType?: 'square' | 'circle' | 'triangle';
+  /** CSS rgba() fill used by shapes. */
+  shapeFillColor?: string;
+  /** CSS rgba() outline used by shapes. */
+  shapeOutlineColor?: string;
+  /** Shape outline width in screen pixels. */
+  shapeOutlineWidth?: number;
+  /** Clockwise rotation around the object's center, in degrees. */
+  rotation?: number;
   /** Embedded image payload. Images intentionally live in the portable .cty JSON. */
   imageDataUrl?: string;
   alt?: string;
@@ -224,7 +232,17 @@ export function createTextbox(
 }
 
 export function createShape(x: number, y: number, shapeType: Textbox['shapeType'] = 'square'): Textbox {
-  return { ...createTextbox(x, y, 120, 120, 14), content: 'New shape', shapeType };
+  return {
+    ...createTextbox(x, y, 120, 120, 14),
+    content: 'New shape',
+    shapeType,
+    alignX: 'center',
+    alignY: 'middle',
+    shapeFillColor: 'rgba(102, 126, 234, 0.15)',
+    shapeOutlineColor: 'rgba(102, 126, 234, 1)',
+    shapeOutlineWidth: 2,
+    rotation: 0,
+  };
 }
 
 export function createImage(x: number, y: number, dataUrl: string, width: number, height: number, alt = ''): Textbox {
