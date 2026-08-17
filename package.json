@@ -1,6 +1,6 @@
 {
   "name": "continuity",
-  "version": "26.1.2",
+  "version": "26.8.1",
   "description": "A web app for planning interconnected stories with branching continuities",
   "type": "module",
   "scripts": {
@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
+    "test": "npm run test:selection",
+    "test:selection": "esbuild tests/*.test.ts --bundle --platform=node --format=esm --outdir=.cache/selection-tests --out-extension:.js=.mjs && node --test ./.cache/selection-tests/*.test.mjs",
     "deploy": "npm run build && wrangler pages deploy dist",
     "pages:deploy": "wrangler pages deploy dist"
   },
