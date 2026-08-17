@@ -83,14 +83,27 @@ Arcs group adjacent chapters into narrative sections (e.g., "Act 1", "Rising Act
 - **Zoom** – Scroll to zoom in/out
 - **Insert Mode** – `Shift + C` for chapters, `Shift + B` for branches
 
+### Touch Controls
+- **Pan** – Drag one finger across empty canvas space
+- **Select/Edit** – Tap an element to select it; double-tap to open its editor
+- **Move/Box Select** – Touch and hold until the progress ring completes, then drag an element or empty canvas space
+- **Zoom** – Pinch with two fingers
+- **Undo/Redo** – Double-tap with two fingers to undo or three fingers to redo
+- **Creation guidance** – Choosing any creation tool displays a step-aware canvas prompt showing where to tap next
+
+On phone-sized touch layouts, newly created items remain selected without automatically opening the editor. Double-tap the item when you are ready to edit its details. Larger touchscreens and pointer-based layouts continue to open the editor after creation.
+
+Touch controls activate from the device's pointer capabilities and the most recently used pointer, so hybrid touchscreen computers switch back to mouse controls when a mouse is used.
+
 ### Add Annotations
 **Textboxes** – Free-floating text notes with markdown support:
 - **Add** – Press `Shift + S`, then click the canvas to place a textbox
 - **Edit** – Double-click a textbox to edit content, size, and alignment
 - **Move** – Click and drag to reposition anywhere on canvas
-- **Resize** – Drag corner/edge handles to resize
+- **Resize** – Select the textbox, then drag a corner or edge node
+- **Rotate** – Drag the circular upper-left rotation control. Rotation magnetizes near common angles by default; disable this in Project Settings for unrestricted precision, or hold Shift with a mouse for explicit 15° increments.
 
-**Shapes and images** – Place visual annotations with `Shift + W` and `Shift + E`, then click the canvas to choose their location. Shape editors include RGBA fill/outline controls, outline thickness, text alignment, and rotation; shape text is clipped to its outline.
+**Shapes and images** – Place visual annotations with `Shift + W` and `Shift + E`, then click the canvas to choose their location. Selected shapes and images use the same resize nodes and rotation control as textboxes. Shape editors include RGBA fill/outline controls, outline thickness, text alignment, and rotation; shape text is clipped to its outline.
 
 **Lines** – Visual connectors between timeline elements:
 - **Add** – Press `Shift + D` to toggle line insertion mode

@@ -20,7 +20,7 @@ offsetY: number,
 
     // Text only (no background or outline)
     ctx.save();
-    if (tb.shapeType && tb.rotation) {
+    if (tb.rotation) {
       ctx.translate(screenX + width / 2, screenY + height / 2);
       ctx.rotate((tb.rotation * Math.PI) / 180);
       ctx.translate(-(screenX + width / 2), -(screenY + height / 2));

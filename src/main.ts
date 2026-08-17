@@ -4,6 +4,8 @@ import { AppStateManager } from './state';
 import { UIComponents } from './ui';
 import { CanvasSelectionSnapshot, TimelineCanvas } from './canvas';
 import { findChapterToLeft, findChapterToRight } from './timelineLayout';
+import { installControlSchemeDetection, shouldAutoOpenCreationEditor } from './controlScheme';
+import { handleSaveShortcut } from './saveShortcut';
 
 type SidebarType = 'timeline' | 'chapter' | 'branch' | 'textbox' | 'line';
 type SidebarData = Parameters<typeof UIComponents.createEditSidebar>[1];
@@ -14,6 +16,7 @@ type SidebarData = Parameters<typeof UIComponents.createEditSidebar>[1];
 
 const stateManager = new AppStateManager();
 let currentEditSidebar: HTMLElement | null = null;
+let currentEditSidebarBackdrop: HTMLButtonElement | null = null;
 
 function initializeApp() {
   const app = document.getElementById('app');
@@ -21,6 +24,13 @@ function initializeApp() {
     console.error('App container not found');
     return;
   }
+
+  installControlSchemeDetection();
+
+  const autoOpenCreatedEditor = (): boolean => shouldAutoOpenCreationEditor(
+    document.documentElement.dataset.controlScheme as 'pointer' | 'touch' | undefined,
+    window.innerWidth,
+  );
 
   // Add styles
   document.head.appendChild(UIComponents.createStyles());
@@ -35,6 +45,8 @@ function initializeApp() {
       currentEditSidebar.remove();
       currentEditSidebar = null;
     }
+    currentEditSidebarBackdrop?.remove();
+    currentEditSidebarBackdrop = null;
     app?.classList.remove('app-has-sidebar');
   }
 
@@ -52,6 +64,12 @@ function initializeApp() {
       () => canvasInstance?.refresh(),
       () => refreshCanvasForSidebar(type, continuity)
     );
+    currentEditSidebarBackdrop = document.createElement('button');
+    currentEditSidebarBackdrop.className = 'edit-sidebar-backdrop';
+    currentEditSidebarBackdrop.type = 'button';
+    currentEditSidebarBackdrop.setAttribute('aria-label', 'Close editor');
+    currentEditSidebarBackdrop.addEventListener('click', closeSidebar);
+    app.appendChild(currentEditSidebarBackdrop);
     app.appendChild(currentEditSidebar);
     app.classList.add('app-has-sidebar');
   }
@@ -135,6 +153,14 @@ function initializeApp() {
   let chapterClipboard: Chapter[] = [];
   let elementClipboard: { textboxes: Textbox[]; lines: Line[] } = { textboxes: [], lines: [] };
 
+  function selectCreatedCanvasObject(selection: Partial<CanvasSelectionSnapshot>): void {
+    preservedCanvasSelection = {
+      timelineIds: [], chapterIds: [], branchIds: [], textboxIds: [], lineIds: [],
+      ...selection,
+    };
+    canvasInstance?.setSelectionSnapshot(preservedCanvasSelection);
+  }
+
   function renderUI() {
     // Capture viewport before tearing down UI
     if (canvasInstance) {
@@ -191,11 +217,12 @@ function initializeApp() {
 
       const modal = UIComponents.createProjectSettingsModal(
         state.currentProject,
-        (title: string, description: string, doubleTapSpeed: 'faster' | 'fast' | 'slow') => {
+        (title: string, description: string, doubleTapSpeed: 'faster' | 'fast' | 'slow', rotationSnapping: boolean) => {
           stateManager.updateProject({
             title,
             description,
             doubleTapSpeed,
+            rotationSnapping,
           });
         }
       );
@@ -224,6 +251,7 @@ function initializeApp() {
     const canvas = new TimelineCanvas(canvasContainer);
     canvasInstance = canvas;
     canvas.setDoubleTapSpeed(currentProject.doubleTapSpeed);
+    canvas.setRotationSnapping(currentProject.rotationSnapping);
     // Restore previous viewport to avoid any snapping
     if (lastViewport) {
       canvas.setViewport(lastViewport);
@@ -328,7 +356,8 @@ function initializeApp() {
       const chapter = createChapter('Chapter', undefined, 1);
       stateManager.insertChapter(continuity.id, chapter, 0);
       stateManager.selectChapter(chapter.id);
-      setTimeout(() => showChapterEditSidebar(chapter.id, true), 0);
+      selectCreatedCanvasObject({ chapterIds: [chapter.id] });
+      if (autoOpenCreatedEditor()) setTimeout(() => showChapterEditSidebar(chapter.id, true), 0);
     });
 
     canvas.setOnEditTimeline((timelineId: string) => {
@@ -373,8 +402,12 @@ function initializeApp() {
       stateManager.updateTextbox(textboxId, { x, y });
     });
 
-    canvas.setOnTextboxResized((textboxId: string, width: number, height: number) => {
-      stateManager.updateTextbox(textboxId, { width, height });
+    canvas.setOnTextboxResized((textboxId: string, x: number, y: number, width: number, height: number) => {
+      stateManager.updateTextbox(textboxId, { x, y, width, height });
+    });
+
+    canvas.setOnTextboxRotated((textboxId: string, rotation: number) => {
+      stateManager.updateTextbox(textboxId, { rotation });
     });
 
     canvas.setOnAddLine((gridX1: number, gridY1: number, gridX2: number, gridY2: number) => {
@@ -452,6 +485,7 @@ function initializeApp() {
     
     stateManager.addContinuity(continuity);
     stateManager.selectContinuity(continuity.id);
+    selectCreatedCanvasObject({ timelineIds: [continuity.id] });
     
     // Note: renderUI() is called synchronously via state subscription
     // After render completes, center on the new timeline if it's the first one
@@ -461,7 +495,7 @@ function initializeApp() {
     }
     
     // Open the edit sidebar for the new timeline immediately with auto-focus
-    showTimelineEditSidebar(continuity.id, true);
+    if (autoOpenCreatedEditor()) showTimelineEditSidebar(continuity.id, true);
   }
 
   function createTimelineAt(x: number, y: number): Continuity | null {
@@ -490,10 +524,11 @@ function initializeApp() {
     );
     stateManager.insertChapter(timelineId, chapter, insertionIndex);
     stateManager.selectChapter(chapter.id);
+    selectCreatedCanvasObject({ chapterIds: [chapter.id] });
 
     // Open the edit sidebar for the new chapter immediately (after render) with auto-focus
     // We use setTimeout to allow renderUI to complete first
-    setTimeout(() => {
+    if (autoOpenCreatedEditor()) setTimeout(() => {
       showChapterEditSidebar(chapter.id, true);
     }, 0);
   }
@@ -517,9 +552,10 @@ function initializeApp() {
     
     stateManager.addBranch(branch);
     stateManager.selectBranch(branch.id);
+    selectCreatedCanvasObject({ branchIds: [branch.id] });
 
     // Open the edit sidebar for the new branch with auto-focus
-    setTimeout(() => {
+    if (autoOpenCreatedEditor()) setTimeout(() => {
       showBranchEditSidebar(branch.id, true);
     }, 0);
   }
@@ -532,9 +568,10 @@ function initializeApp() {
     const textbox = createTextbox(x, y, 100, 80, 14);
     stateManager.addTextbox(textbox);
     stateManager.selectTextbox(textbox.id);
+    selectCreatedCanvasObject({ textboxIds: [textbox.id] });
 
     // Open the edit sidebar for the new textbox with auto-focus
-    setTimeout(() => {
+    if (autoOpenCreatedEditor()) setTimeout(() => {
       showTextboxEditSidebar(textbox.id, true);
     }, 0);
   }
@@ -545,7 +582,8 @@ function initializeApp() {
     const shape = createShape(x, y);
     stateManager.addTextbox(shape);
     stateManager.selectTextbox(shape.id);
-    setTimeout(() => showTextboxEditSidebar(shape.id, true), 0);
+    selectCreatedCanvasObject({ textboxIds: [shape.id] });
+    if (autoOpenCreatedEditor()) setTimeout(() => showTextboxEditSidebar(shape.id, true), 0);
   }
 
   function promptForImage(x: number, y: number): void {
@@ -562,7 +600,8 @@ function initializeApp() {
           const scale = Math.min(1, 300 / Math.max(image.naturalWidth, image.naturalHeight));
           const item = createImage(x, y, dataUrl, Math.max(50, image.naturalWidth * scale), Math.max(50, image.naturalHeight * scale), file.name);
           stateManager.addTextbox(item); stateManager.selectTextbox(item.id);
-          setTimeout(() => showTextboxEditSidebar(item.id, true), 0);
+          selectCreatedCanvasObject({ textboxIds: [item.id] });
+          if (autoOpenCreatedEditor()) setTimeout(() => showTextboxEditSidebar(item.id, true), 0);
         };
         image.src = dataUrl;
       };
@@ -579,9 +618,10 @@ function initializeApp() {
     const line = createLine(gridX1, gridY1, gridX2, gridY2);
     stateManager.addLine(line);
     stateManager.selectLine(line.id);
+    selectCreatedCanvasObject({ lineIds: [line.id] });
 
     // Open the edit sidebar for the new line with auto-focus
-    setTimeout(() => {
+    if (autoOpenCreatedEditor()) setTimeout(() => {
       showLineEditSidebar(line.id, true);
     }, 0);
   }
@@ -615,6 +655,18 @@ function initializeApp() {
       canvasInstance.exportToPNG(filename);
     }
   }
+
+  function openExportChoice() {
+    if (!app || !stateManager.getState().currentProject || app.querySelector('.export-choice-modal')) return;
+    app.appendChild(UIComponents.createExportChoiceModal(
+      handleExportPNG,
+      () => { void handleExport(); },
+    ));
+  }
+
+  document.addEventListener('keydown', event => {
+    handleSaveShortcut(event, Boolean(stateManager.getState().currentProject), openExportChoice);
+  });
 
   async function handleImport(file: File) {
     try {

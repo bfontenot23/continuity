@@ -3,6 +3,7 @@ import { Arc, Continuity, createArc } from './types';
 import { AppStateManager } from './state';
 import { normalizeRotation, parseRgbaColor, rgbaToCss, rgbaToHex, RgbaColor } from './shapeStyle';
 import { hasLegacyBranchAnchors } from './branchBehavior';
+import { shouldAutoFocusEditor } from './controlScheme';
 
 export type SidebarType = 'timeline' | 'chapter' | 'branch' | 'textbox' | 'line';
 export interface SidebarData {
@@ -1078,7 +1079,8 @@ export function createEditSidebar(
   sidebar.appendChild(actions);
 
   // Auto-focus the appropriate input only on initial creation
-  if (autoFocus) {
+  // Avoid iOS focus zoom/viewport jumps while the touch sheet is opening.
+  if (shouldAutoFocusEditor(autoFocus, document.documentElement.dataset.controlScheme as 'pointer' | 'touch' | undefined)) {
     setTimeout(() => {
       if (type === 'timeline') {
         const nameInput = sidebar.querySelector('#timeline-name-input') as HTMLInputElement;

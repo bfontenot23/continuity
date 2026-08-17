@@ -37,6 +37,8 @@ function canvasHarness() {
     textboxes: [],
     timelineArcs: new Map(),
     selectionCycle: null,
+    canvasNotice: { textContent: '', dataset: {} },
+    canvasNoticeTimer: null,
   });
   return canvas;
 }
@@ -163,6 +165,32 @@ test('rotated shapes use their rotated bounds for pointer hit testing', () => {
   assert.equal(canvas.getClickedTextboxElement(5, 5), null);
 });
 
+test('selected textboxes and images expose persistent resize and rotation controls', () => {
+  const canvas = canvasHarness();
+  canvas.timelines = [];
+  canvas.branches = [];
+  canvas.lines = [];
+  canvas.textboxes = [
+    { id: 'textbox', content: 'Text', x: 0, y: 0, width: 100, height: 50, fontSize: 14 },
+    { id: 'image', content: '', x: 200, y: 0, width: 100, height: 50, fontSize: 14, imageDataUrl: 'data:image/png;base64,test' },
+  ];
+  canvas.selectedTextboxIds = new Set(['textbox', 'image']);
+  assert.deepEqual(canvas.getClickedTextboxElement(100, 50), { type: 'resize-handle', textboxId: 'textbox', handle: 'se' });
+  assert.deepEqual(canvas.getClickedTextboxElement(-28, -28), { type: 'rotation-handle', textboxId: 'textbox' });
+  assert.deepEqual(canvas.getClickedTextboxElement(300, 50), { type: 'resize-handle', textboxId: 'image', handle: 'se' });
+});
+
+test('plain textboxes use rotation-aware body hit testing', () => {
+  const canvas = canvasHarness();
+  canvas.timelines = [];
+  canvas.branches = [];
+  canvas.lines = [];
+  canvas.textboxes = [{ id: 'textbox', content: 'Text', x: 0, y: 0, width: 100, height: 50, fontSize: 14, rotation: 90 }];
+  canvas.selectedTextboxIds = new Set();
+  assert.equal(canvas.getClickedTextboxElement(50, 65)?.textboxId, 'textbox');
+  assert.equal(canvas.getClickedTextboxElement(5, 5), null);
+});
+
 test('standard select-all, timeline clipboard, and delete shortcuts operate on mixed selections', () => {
   const canvas = canvasHarness();
   const canvasListeners = new Map<string, Function>();
@@ -252,9 +280,74 @@ test('standard select-all, timeline clipboard, and delete shortcuts operate on m
     timelineIds: [], chapterIds: [], branchIds: [], textboxIds: [], lineIds: [],
   });
 
+  canvas.selectedBranchIds.add('branch-a');
+  canvas.timelineClipboardReady = true;
+  keydown(event('x', true));
+  assert.deepEqual(deleted, {
+    timelineIds: [], chapterIds: [], branchIds: ['branch-a'], textboxIds: [], lineIds: [],
+  }, 'cut deletes a branch even though branches have no standalone paste payload');
+  assert.equal(canvas.timelineClipboardReady, false);
+  assert.deepEqual(canvas.getSelectionSnapshot(), {
+    timelineIds: [], chapterIds: [], branchIds: [], textboxIds: [], lineIds: [],
+  });
+
+  canvas.selectedLineIds.add('line-a');
+  let contentEditablePrevented = false;
+  keydown({
+    ...event('a', true),
+    target: { tagName: 'DIV', isContentEditable: true },
+    preventDefault() { contentEditablePrevented = true; },
+  });
+  assert.equal(contentEditablePrevented, false, 'canvas shortcuts do not override contenteditable controls');
+  assert.deepEqual([...canvas.selectedLineIds], ['line-a']);
+
+  canvas.clearSelection();
+  canvas.selectedChapterIds = new Set(['chapter-a', 'chapter-b']);
+  keydown(event('c', true));
+  assert.equal(canvas.canvasNotice.textContent, 'Chapters cannot be copied between timelines.');
+  assert.equal(canvas.canvasNotice.dataset.visible, 'true');
+  clearTimeout(canvas.canvasNoticeTimer);
+  canvas.canvasNoticeTimer = null;
+  canvas.clearSelection();
+  canvas.selectedLineIds.add('line-a');
+
   const mouse = (clientX: number, clientY: number, modifiers: Record<string, boolean> = {}) => ({
     button: 0, clientX, clientY, shiftKey: false, ctrlKey: false, metaKey: false, ...modifiers,
   });
+
+  let backgroundSelections = 0;
+  let chapterEdits = 0;
+  canvas.onBackgroundClick = () => { backgroundSelections++; };
+  canvas.onEditChapter = () => { chapterEdits++; };
+  canvasListeners.get('mousedown')!(mouse(75, -16, { shiftKey: true }));
+  canvasListeners.get('mouseup')!(mouse(75, -16, { shiftKey: true }));
+  canvasListeners.get('mousedown')!(mouse(275, 84, { shiftKey: true }));
+  canvasListeners.get('mouseup')!(mouse(275, 84, { shiftKey: true }));
+  assert.deepEqual(canvas.getSelectionSnapshot(), {
+    timelineIds: [], chapterIds: ['chapter-a', 'chapter-b'], branchIds: [], textboxIds: [], lineIds: ['line-a'],
+  }, 'Shift-click adds non-adjacent chapters without collapsing the group before a drag');
+  assert.equal(chapterEdits, 0, 'modifier double-clicks never open an editor');
+  assert.equal(backgroundSelections, 2, 'selecting another object closes the active editor through the background callback');
+
+  canvasListeners.get('mousedown')!(mouse(900, 700));
+  canvasListeners.get('mouseup')!(mouse(900, 700));
+  assert.deepEqual(canvas.getSelectionSnapshot(), {
+    timelineIds: [], chapterIds: [], branchIds: [], textboxIds: [], lineIds: [],
+  }, 'a plain click outside selected objects clears the entire selection');
+
+  canvasListeners.get('mousedown')!(mouse(25, -16));
+  canvasListeners.get('mouseup')!(mouse(25, -16));
+  assert.deepEqual(canvas.getSelectionSnapshot(), {
+    timelineIds: ['timeline-a'], chapterIds: [], branchIds: [], textboxIds: [], lineIds: [],
+  }, 'clicking a timeline head selects the complete timeline');
+
+  canvasListeners.get('mousedown')!(mouse(-5, -35, { ctrlKey: true }));
+  canvasListeners.get('mousemove')!(mouse(55, 5, { ctrlKey: true }));
+  canvasListeners.get('mouseup')!(mouse(55, 5, { ctrlKey: true }));
+  assert.deepEqual(canvas.getSelectionSnapshot(), {
+    timelineIds: [], chapterIds: [], branchIds: [], textboxIds: [], lineIds: [],
+  }, 'enclosing a Head with a removal marquee deselects its complete timeline');
+
   canvasListeners.get('mousedown')!(mouse(-20, -60, { shiftKey: true }));
   canvasListeners.get('mousemove')!(mouse(180, 30, { shiftKey: true }));
   canvasListeners.get('mouseup')!(mouse(180, 30));

@@ -58,17 +58,17 @@ render(textboxes: Textbox[], viewport: TextboxOverlayViewport, hoveredTextboxId:
       this.elements.set(textbox.id, element);
     }
     
-    // Update position and size. Rotated shapes scale around their center, so
-    // compensate the unscaled DOM box to keep it aligned with the canvas shape.
+    // Scale and rotate every floating object around its center so textbox,
+    // image, and shape controls share the same geometry.
     const screenLeft = screenX * viewport.zoom;
     const screenTop = screenY * viewport.zoom;
-    element.style.left = (screenLeft + (textbox.shapeType ? textbox.width * (viewport.zoom - 1) / 2 : 0)) + 'px';
-    element.style.top = (screenTop + (textbox.shapeType ? textbox.height * (viewport.zoom - 1) / 2 : 0)) + 'px';
+    element.style.left = (screenLeft + textbox.width * (viewport.zoom - 1) / 2) + 'px';
+    element.style.top = (screenTop + textbox.height * (viewport.zoom - 1) / 2) + 'px';
     element.style.width = textbox.width + 'px';
     element.style.height = textbox.height + 'px';
-    const rotation = textbox.shapeType ? (textbox.rotation ?? 0) : 0;
+    const rotation = textbox.rotation ?? 0;
     element.style.transform = `scale(${viewport.zoom}) rotate(${rotation}deg)`;
-    element.style.transformOrigin = textbox.shapeType ? 'center center' : 'top left';
+    element.style.transformOrigin = 'center center';
     // Font size stays at model value - CSS scale handles zoom uniformly
     element.style.fontSize = textbox.fontSize + 'px';
     element.style.lineHeight = (textbox.fontSize * 1.4) + 'px';

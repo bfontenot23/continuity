@@ -7,7 +7,7 @@
 \+ The changelog dialog now includes earlier release notes.
 \+ Added markdown-enabled shapes (square, circle, and triangle) with Shift+W insertion.
 \+ Added portable embedded-image insertion with Shift+E, resizing, and alternative text editing.
-\+ Added configurable touch double-tap timing, one-finger touch interaction, two-finger pan/pinch zoom, and two/three-finger undo/redo gestures.
+\+ Added configurable touch double-tap timing, tap selection/editing, hold-to-drag and hold-to-marquee interactions with a visible progress ring, one-finger canvas panning, pinch zoom, and two/three-finger undo/redo gestures.
 \+ Added browser-standard undo/redo shortcuts with a local 100-step history.
 \+ Added initial selection support for chapters and floating elements, including multi-select, copy/cut/paste/delete, and grouped movement for textboxes, shapes, and images.
 \+ Added Shift-drag marquee selection for chapters and floating elements.
@@ -42,6 +42,11 @@
 \+ Branch and chapter placement now previews the new timeline and connection before an empty-grid click.
 \+ Shapes now support RGBA fill and outline colors, configurable outline width, clipped centered text, and rotation.
 \+ Edit sidebars now remain stable during live canvas redraws.
+\+ Selected textboxes, images, and shapes now display persistent resize nodes and an upper-left rotation control that work with mouse and touch input.
+\+ Rotation now magnetizes near common angles, with a project setting to disable snapping for unrestricted precision.
+\+ Touch creation tools now display step-aware canvas guidance for timelines, chapters, branches, lines, textboxes, shapes, and images.
+\+ Phone-sized touch layouts now keep newly created items selected without automatically opening the editor sheet.
+\+ Ctrl/Cmd+S now opens an in-app choice to save the project as a PNG image or portable .cty file.
 
 ## Improvements
 
@@ -50,6 +55,7 @@
 \+ Escape cancels active timeline, chapter, branch, textbox, shape, image, and line placement modes.
 \+ Default textbox height is larger.
 \+ Undo and redo history now retains 100 actions.
+\+ Touchscreen control detection now adapts the controls on hybrid devices, while small screens use safe-area-aware sizing, an accessible compact header, and a full-height editor sheet instead of the cramped bottom panel.
 
 ## Bug Fixes
 
@@ -63,3 +69,9 @@
 - Fixed timeline-centered cuts deleting separately selected chapters or branches that were not represented in the clipboard.
 - Fixed live timeline and chapter titles waiting for a later canvas refresh.
 - Fixed valid branches attached to an empty timeline endpoint showing the legacy-branch warning.
+- Fixed iOS zooming or shifting the page when a touch editor automatically focused a small form field.
+- Fixed Shift-clicking disjoint chapters collapsing the selection before a drag actually begins.
+- Fixed marquee selection around a timeline Head or Tail failing to select or deselect the complete timeline.
+- Fixed branch-only Cut doing nothing; it now removes the selected branches and clears the canvas clipboard.
+- Replaced intrusive browser alerts for cross-timeline chapter copy/cut attempts with a temporary red canvas notice.
+- Fixed branches failing to follow their chapter anchors when an arc was reordered by dragging its title.

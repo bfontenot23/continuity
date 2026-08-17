@@ -157,6 +157,30 @@ test('adjacent chapter groups reorder as a stable block and undo together', () =
     .slice().sort((a, b) => a.timestamp - b.timestamp).map(item => item.id), ['a', 'b', 'c', 'd', 'e']);
 });
 
+test('dragging an arc title recalculates branches anchored to its chapters', () => {
+  const manager = new AppStateManager();
+  const project = projectFixture();
+  const source = project.continuities[0];
+  source.arcs = [
+    { id: 'arc-a', name: 'Arc A', order: 0, color: '#111111' },
+    { id: 'arc-b', name: 'Arc B', order: 1, color: '#222222' },
+  ];
+  source.chapters[0].arcId = 'arc-a';
+  source.chapters[1].arcId = 'arc-a';
+  source.chapters[2].arcId = 'arc-b';
+  manager.setProject(project);
+
+  manager.reorderArc('timeline-a', 'arc-a', 2);
+
+  const changed = manager.getState().currentProject!;
+  assert.deepEqual(changed.continuities[0].chapters
+    .slice().sort((a, b) => a.timestamp - b.timestamp).map(item => item.id), ['a3', 'a1', 'a2']);
+  const branchCopies = changed.continuities.flatMap(continuity => continuity.branches)
+    .filter(branch => branch.id === 'branch-ab');
+  assert.ok(branchCopies.length > 0);
+  assert.ok(branchCopies.every(branch => branch.startPosition === 4), 'every stored branch copy follows the reordered anchor');
+});
+
 test('pasted chapter groups never retain dangling source arc ids', () => {
   const manager = new AppStateManager();
   const project = projectFixture();

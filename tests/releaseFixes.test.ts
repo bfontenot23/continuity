@@ -5,7 +5,7 @@ import { parseRgbaColor, rgbaToCss, rgbaToHex, normalizeRotation } from '../src/
 import { findChapterToLeft, findChapterToRight } from '../src/timelineLayout';
 import { AppStateManager } from '../src/state';
 import { createProject, createShape, type Continuity } from '../src/types';
-import { getRotatedResize } from '../src/canvasGeometry';
+import { getObjectControlAtPoint, getObjectControlPoints, getPointerRotation, getRotatedResize, snapRotationToCommonAngle } from '../src/canvasGeometry';
 
 const storage = new Map<string, string>();
 Object.defineProperty(globalThis, 'localStorage', {
@@ -68,6 +68,28 @@ test('rotated shape resizing follows the rotated local axes', () => {
   assert.ok(Math.abs(resized.height - 100) < 0.001);
   assert.ok(Math.abs(resized.x + 25) < 0.001);
   assert.ok(Math.abs(resized.y - 25) < 0.001);
+});
+
+test('selected floating objects expose resize nodes and an upper-left rotation control', () => {
+  const controls = getObjectControlPoints(0, 0, 100, 50, 0);
+  assert.deepEqual(controls.find(control => control.control === 'se'), { control: 'se', x: 100, y: 50 });
+  assert.deepEqual(controls.find(control => control.control === 'rotate'), { control: 'rotate', x: -28, y: -28 });
+  assert.equal(getObjectControlAtPoint(controls, 106, 53, 10), 'se');
+  assert.equal(getObjectControlAtPoint(controls, -22, -24, 10), 'rotate');
+});
+
+test('rotation gestures preserve their grab offset and optionally snap to 15 degrees', () => {
+  assert.equal(getPointerRotation(50, 50, 50, 100, 0, 10), 100);
+  assert.equal(getPointerRotation(50, 50, 100, 50, -44, 0, 15), 45);
+});
+
+test('rotation magnetizes only near common angles and can be disabled per project', () => {
+  assert.equal(snapRotationToCommonAngle(43, true), 45);
+  assert.equal(snapRotationToCommonAngle(62, true), 60);
+  assert.equal(snapRotationToCommonAngle(358, true), 0);
+  assert.equal(snapRotationToCommonAngle(38, true), 38);
+  assert.equal(snapRotationToCommonAngle(43, false), 43);
+  assert.equal(createProject('Snapping').rotationSnapping, true);
 });
 
 test('undo history retains the latest 100 project actions', () => {

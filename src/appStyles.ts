@@ -8,26 +8,37 @@ export function createAppStyles(): HTMLStyleElement {
       box-sizing: border-box;
     }
 
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       background: #f5f5f5;
       color: #333;
+      min-height: 100dvh;
+      overscroll-behavior: none;
     }
 
     #app {
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      height: 100dvh;
+      min-height: 0;
     }
 
     .topbar {
       background: #0f172a;
       color: #e2e8f0;
-      padding: 0.65rem 1rem;
+      padding: max(0.65rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 0.65rem max(1rem, env(safe-area-inset-left));
       border-bottom: 1px solid #1f2937;
       position: sticky;
       top: 0;
-      z-index: 5;
+      z-index: 1300;
+      flex: 0 0 auto;
     }
 
     .topbar-inner {
@@ -37,6 +48,8 @@ export function createAppStyles(): HTMLStyleElement {
       align-items: center;
       gap: 0.75rem;
       flex-wrap: wrap;
+      width: 100%;
+      min-width: 0;
     }
 
     .brand {
@@ -159,6 +172,10 @@ export function createAppStyles(): HTMLStyleElement {
       margin-left: auto;
       position: relative;
       z-index: 11;
+      min-width: 44px;
+      min-height: 44px;
+      align-items: center;
+      justify-content: center;
     }
 
     .hamburger-icon {
@@ -220,6 +237,10 @@ export function createAppStyles(): HTMLStyleElement {
     }
 
     @media (max-width: 720px) {
+      .topbar {
+        padding: max(0.4rem, env(safe-area-inset-top)) max(0.65rem, env(safe-area-inset-right)) 0.4rem max(0.65rem, env(safe-area-inset-left));
+      }
+
       .hamburger-menu-btn {
         display: flex;
       }
@@ -244,7 +265,19 @@ export function createAppStyles(): HTMLStyleElement {
       }
 
       .brand {
-        flex-shrink: 0;
+        flex: 1 1 auto;
+        overflow: hidden;
+      }
+
+      .brand-copy {
+        min-width: 0;
+      }
+
+      .brand-title,
+      .brand-subtitle {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .topbar-actions {
@@ -257,6 +290,22 @@ export function createAppStyles(): HTMLStyleElement {
       }
 
       .topbar-actions::-webkit-scrollbar {
+        display: none;
+      }
+
+      .hamburger-menu {
+        position: fixed;
+        top: calc(env(safe-area-inset-top) + 56px);
+        right: max(0.65rem, env(safe-area-inset-right));
+        width: min(280px, calc(100vw - 1.3rem));
+        max-height: calc(100dvh - env(safe-area-inset-top) - 68px);
+        overflow-y: auto;
+        z-index: 1310;
+      }
+    }
+
+    @media (max-width: 390px) {
+      .brand-subtitle {
         display: none;
       }
     }
@@ -308,6 +357,88 @@ export function createAppStyles(): HTMLStyleElement {
       flex: 1;
       overflow: hidden;
       flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .canvas-editor-container {
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .canvas-placement-hint {
+      display: none;
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: min(92%, 520px);
+      padding: 0.7rem 1rem;
+      border: 1px solid rgba(25, 118, 210, 0.35);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.96);
+      color: #0f3f76;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+      font-size: 0.92rem;
+      font-weight: 650;
+      line-height: 1.3;
+      text-align: center;
+      pointer-events: none;
+      z-index: 8;
+    }
+
+    html[data-control-scheme="touch"] .canvas-placement-hint[data-visible="true"] {
+      display: block;
+      animation: placement-hint-in 180ms ease-out;
+    }
+
+    .canvas-notice {
+      display: none;
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: min(92%, 520px);
+      padding: 0.65rem 1rem;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+      font-size: 0.9rem;
+      font-weight: 650;
+      line-height: 1.3;
+      text-align: center;
+      pointer-events: none;
+      z-index: 9;
+    }
+
+    .canvas-notice[data-visible="true"] {
+      display: block;
+      animation: placement-hint-in 180ms ease-out;
+    }
+
+    .canvas-notice-error {
+      border: 1px solid rgba(185, 28, 28, 0.35);
+      background: rgba(254, 242, 242, 0.97);
+      color: #991b1b;
+    }
+
+    @keyframes placement-hint-in {
+      from { opacity: 0; transform: translate(-50%, -6px); }
+      to { opacity: 1; transform: translate(-50%, 0); }
+    }
+
+    @media (max-width: 480px) {
+      .canvas-placement-hint,
+      .canvas-notice {
+        top: 10px;
+        width: calc(100% - 20px);
+        border-radius: 12px;
+        font-size: 0.88rem;
+      }
     }
 
     .continuity-nav {
@@ -586,6 +717,31 @@ export function createAppStyles(): HTMLStyleElement {
       box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
     }
 
+    .settings-toggle {
+      display: flex !important;
+      align-items: center;
+      gap: 0.65rem;
+      cursor: pointer;
+    }
+
+    .settings-toggle input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      flex: 0 0 auto;
+      accent-color: #667eea;
+    }
+
+    .settings-toggle span {
+      line-height: 1.3;
+    }
+
+    .form-help {
+      margin: 0.35rem 0 0 1.65rem;
+      color: #64748b;
+      font-size: 0.82rem;
+      line-height: 1.4;
+    }
+
     .content-textarea {
       min-height: 200px;
       resize: vertical;
@@ -670,6 +826,12 @@ export function createAppStyles(): HTMLStyleElement {
       z-index: 1000;
       display: flex;
       flex-direction: column;
+    }
+
+    .edit-sidebar-backdrop {
+      display: none;
+      border: 0;
+      padding: 0;
     }
 
     .edit-sidebar.hidden {
@@ -816,80 +978,81 @@ export function createAppStyles(): HTMLStyleElement {
       }
     }
 
+    html[data-control-scheme="touch"] .edit-sidebar-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.38);
+      z-index: 1240;
+    }
+
+    html[data-control-scheme="touch"] .edit-sidebar {
+      top: max(calc(env(safe-area-inset-top) + 64px), 64px);
+      right: 0;
+      bottom: 0;
+      width: min(480px, 100vw);
+      height: auto;
+      max-height: none;
+      border-radius: 18px 0 0 0;
+      border-bottom: 0;
+      border-right: 0;
+      z-index: 1250;
+      padding-bottom: env(safe-area-inset-bottom);
+      box-shadow: -12px 0 36px rgba(15, 23, 42, 0.24);
+    }
+
+    html[data-control-scheme="touch"] .edit-sidebar-header {
+      padding: 1rem max(1rem, env(safe-area-inset-right)) 1rem 1rem;
+    }
+
+    html[data-control-scheme="touch"] .close-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      background: #f1f5f9;
+    }
+
+    html[data-control-scheme="touch"] .edit-sidebar-content {
+      padding: 1rem max(1rem, env(safe-area-inset-right)) 1.5rem max(1rem, env(safe-area-inset-left));
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    html[data-control-scheme="touch"] .edit-sidebar input,
+    html[data-control-scheme="touch"] .edit-sidebar textarea,
+    html[data-control-scheme="touch"] .edit-sidebar select {
+      min-height: 44px;
+      padding: 0.7rem;
+      font-size: 16px !important;
+      scroll-margin-block: 5rem;
+    }
+
+    /* Safari zooms focused controls whose computed font size is below 16px. */
+    @supports (-webkit-touch-callout: none) {
+      html[data-control-scheme="touch"] input,
+      html[data-control-scheme="touch"] textarea,
+      html[data-control-scheme="touch"] select {
+        font-size: 16px !important;
+      }
+    }
+
+    html[data-control-scheme="touch"] .edit-sidebar-actions {
+      position: sticky;
+      bottom: 0;
+      padding: 0.85rem max(1rem, env(safe-area-inset-right)) max(0.85rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+      background: white;
+    }
+
+    html[data-control-scheme="touch"] .edit-sidebar-actions button {
+      min-height: 44px;
+      font-size: 1rem;
+    }
+
     @media (max-width: 720px) {
-      #app {
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
-      }
-
-      #app.app-has-sidebar {
-        padding-bottom: 25vh;
-      }
-
-      .main-wrapper {
-        flex: 1;
-        overflow: hidden;
-        padding-bottom: 0;
-      }
-
-      .edit-sidebar {
-        position: fixed;
-        right: 0;
-        bottom: 0;
+      html[data-control-scheme="touch"] .edit-sidebar {
         left: 0;
-        top: auto;
         width: 100%;
-        height: 25vh;
-        min-height: 250px;
-        border-top: 2px solid #e0e0e0;
-        border-radius: 12px 12px 0 0;
-        box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
-        z-index: 999;
-      }
-
-      .edit-sidebar-content {
-        flex: 1;
-        padding: 1rem;
-        overflow-y: auto;
-        overflow-x: hidden;
-      }
-
-      .edit-sidebar-header {
-        padding: 1rem;
-      }
-
-      .edit-sidebar-header h3 {
-        font-size: 1rem;
-      }
-
-      .edit-sidebar-actions {
-        padding: 1rem;
-        gap: 0.5rem;
-      }
-
-      .edit-sidebar-actions button {
-        padding: 0.4rem 0.8rem;
-        font-size: 0.85rem;
-      }
-
-      .edit-sidebar .form-group {
-        margin-bottom: 0.75rem;
-      }
-
-      .edit-sidebar label {
-        font-size: 0.85rem;
-      }
-
-      .edit-sidebar input,
-      .edit-sidebar textarea,
-      .edit-sidebar select {
-        font-size: 0.85rem;
-        padding: 0.4rem;
-      }
-
-      .edit-sidebar textarea {
-        min-height: 60px;
+        border-radius: 18px 18px 0 0;
       }
     }
 
@@ -1010,6 +1173,20 @@ export function createAppStyles(): HTMLStyleElement {
 
     .modal-actions .btn-secondary:hover {
       background: #e0e0e0;
+    }
+
+    .export-choice-actions {
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 480px) {
+      .export-choice-actions {
+        flex-direction: column-reverse;
+      }
+
+      .export-choice-actions button {
+        width: 100%;
+      }
     }
 
     .textbox-overlay {

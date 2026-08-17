@@ -579,6 +579,49 @@ export class UIComponents {
     return modal;
   }
 
+  static createExportChoiceModal(onExportPNG: () => void, onExportCTY: () => void): HTMLElement {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay export-choice-modal';
+    modal.innerHTML = `
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="export-choice-title">
+        <div class="modal-header">
+          <h2 id="export-choice-title">Save project</h2>
+        </div>
+        <div class="modal-body">
+          <p>Choose how you want to save your work.</p>
+        </div>
+        <div class="modal-actions export-choice-actions">
+          <button type="button" data-export-choice="cancel" class="btn btn-secondary">Cancel</button>
+          <button type="button" data-export-choice="png" class="btn btn-primary">PNG image</button>
+          <button type="button" data-export-choice="cty" class="btn btn-primary">.cty project</button>
+        </div>
+      </div>
+    `;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeModal();
+    };
+    const closeModal = () => {
+      document.removeEventListener('keydown', handleEscape);
+      modal.remove();
+    };
+    modal.querySelector('[data-export-choice="cancel"]')?.addEventListener('click', closeModal);
+    modal.querySelector('[data-export-choice="png"]')?.addEventListener('click', () => {
+      closeModal();
+      onExportPNG();
+    });
+    modal.querySelector('[data-export-choice="cty"]')?.addEventListener('click', () => {
+      closeModal();
+      onExportCTY();
+    });
+    modal.addEventListener('click', event => {
+      if (event.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', handleEscape);
+    window.setTimeout(() => (modal.querySelector('[data-export-choice="png"]') as HTMLButtonElement | null)?.focus(), 0);
+    return modal;
+  }
+
   static createVersionWarningModal(message: string, onConfirm: () => void): HTMLElement {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
@@ -803,7 +846,7 @@ export class UIComponents {
     return modal;
   }
 
-  static createProjectSettingsModal(project: Project, onSave: (title: string, description: string, doubleTapSpeed: 'faster' | 'fast' | 'slow') => void): HTMLElement {
+  static createProjectSettingsModal(project: Project, onSave: (title: string, description: string, doubleTapSpeed: 'faster' | 'fast' | 'slow', rotationSnapping: boolean) => void): HTMLElement {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
 
@@ -834,6 +877,13 @@ export class UIComponents {
             </select>
           </div>
           <div class="form-group">
+            <label class="settings-toggle" for="rotation-snapping">
+              <input type="checkbox" id="rotation-snapping" name="rotation-snapping" ${project.rotationSnapping !== false ? 'checked' : ''} />
+              <span>Snap rotation to common angles</span>
+            </label>
+            <p class="form-help">Magnetizes near 0°, 30°, 45°, 60°, 90°, and their equivalents. Disable for unrestricted precision.</p>
+          </div>
+          <div class="form-group">
             <label for="project-description">Project Description</label>
             <textarea 
               id="project-description" 
@@ -854,6 +904,7 @@ export class UIComponents {
     const titleInput = modal.querySelector('#project-title') as HTMLInputElement;
     const descInput = modal.querySelector('#project-description') as HTMLTextAreaElement;
     const doubleTapInput = modal.querySelector('#double-tap-speed') as HTMLSelectElement;
+    const rotationSnappingInput = modal.querySelector('#rotation-snapping') as HTMLInputElement;
     const titleError = modal.querySelector('#project-title-error') as HTMLSpanElement;
     const cancelBtn = modal.querySelector('#modal-cancel') as HTMLButtonElement;
 
@@ -875,7 +926,7 @@ export class UIComponents {
       titleError.style.display = 'none';
       const description = descInput.value.trim();
       closeModal();
-      onSave(title, description, doubleTapInput.value as 'faster' | 'fast' | 'slow');
+      onSave(title, description, doubleTapInput.value as 'faster' | 'fast' | 'slow', rotationSnappingInput.checked);
     });
 
     cancelBtn.addEventListener('click', closeModal);

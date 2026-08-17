@@ -1,4 +1,85 @@
 export type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
+export type ObjectControl = ResizeHandle | 'rotate';
+
+export interface ObjectControlPoint {
+  control: ObjectControl;
+  x: number;
+  y: number;
+}
+
+/** Screen-space control points for a box rotated around its center. */
+export function getObjectControlPoints(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rotationDegrees: number,
+  rotationOffset = 28,
+): ObjectControlPoint[] {
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const radians = rotationDegrees * Math.PI / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const rotate = (localX: number, localY: number) => ({
+    x: centerX + localX * cos - localY * sin,
+    y: centerY + localX * sin + localY * cos,
+  });
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
+  const definitions: Array<[ObjectControl, number, number]> = [
+    ['nw', -halfWidth, -halfHeight], ['n', 0, -halfHeight], ['ne', halfWidth, -halfHeight],
+    ['w', -halfWidth, 0], ['e', halfWidth, 0],
+    ['sw', -halfWidth, halfHeight], ['s', 0, halfHeight], ['se', halfWidth, halfHeight],
+    ['rotate', -halfWidth - rotationOffset, -halfHeight - rotationOffset],
+  ];
+  return definitions.map(([control, localX, localY]) => ({ control, ...rotate(localX, localY) }));
+}
+
+export function getObjectControlAtPoint(
+  points: readonly ObjectControlPoint[],
+  pointerX: number,
+  pointerY: number,
+  hitRadius: number,
+): ObjectControl | null {
+  return points.find(point => Math.hypot(pointerX - point.x, pointerY - point.y) <= hitRadius)?.control ?? null;
+}
+
+export function getPointerRotation(
+  centerX: number,
+  centerY: number,
+  pointerX: number,
+  pointerY: number,
+  startPointerAngle: number,
+  startRotation: number,
+  snapDegrees = 0,
+): number {
+  const pointerAngle = Math.atan2(pointerY - centerY, pointerX - centerX) * 180 / Math.PI;
+  let rotation = ((startRotation + pointerAngle - startPointerAngle) % 360 + 360) % 360;
+  if (snapDegrees > 0) rotation = Math.round(rotation / snapDegrees) * snapDegrees % 360;
+  return rotation;
+}
+
+export const COMMON_ROTATION_ANGLES = [
+  0, 30, 45, 60, 90, 120, 135, 150,
+  180, 210, 225, 240, 270, 300, 315, 330,
+] as const;
+
+/** Magnetize only when close to a familiar angle; otherwise preserve precision. */
+export function snapRotationToCommonAngle(rotation: number, enabled: boolean, threshold = 4): number {
+  const normalized = ((rotation % 360) + 360) % 360;
+  if (!enabled) return normalized;
+  let nearest = normalized;
+  let nearestDistance = Infinity;
+  for (const angle of COMMON_ROTATION_ANGLES) {
+    const distance = Math.abs(((normalized - angle + 180) % 360 + 360) % 360 - 180);
+    if (distance < nearestDistance) {
+      nearest = angle;
+      nearestDistance = distance;
+    }
+  }
+  return nearestDistance <= threshold ? nearest : normalized;
+}
 
 export function distanceToLineSegment(
   pointX: number,

@@ -769,6 +769,10 @@ export class AppStateManager {
           }
         });
 
+        // Arc-title dragging changes chapter order just like chapter dragging,
+        // so every branch anchored to this timeline must follow its chapter.
+        this.recalculateBranchPositions(continuity);
+
         this.state.currentProject.modified = Date.now();
         this.notifyListeners();
       }

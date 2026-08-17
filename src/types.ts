@@ -101,6 +101,8 @@ export interface Project {
   textboxes: Textbox[]; // Free-floating textboxes with markdown support
   lines: Line[]; // Free-floating lines with grid-locked positions
   doubleTapSpeed?: 'faster' | 'fast' | 'slow';
+  /** Magnetize floating-object rotation near common angles (default: enabled). */
+  rotationSnapping?: boolean;
 }
 
 // Helper functions for working with these models
@@ -115,6 +117,7 @@ export function createProject(title: string): Project {
     textboxes: [],
     lines: [],
     doubleTapSpeed: 'fast',
+    rotationSnapping: true,
   };
 }
 

@@ -8,7 +8,7 @@ import { getChapterPositions, getChapterWidth, sortChapters } from './timelineLa
 import { MenuSystem } from './menuSystem';
 import { groupTimelineChaptersByArc } from './canvasArcGroups';
 import { renderTextboxesToCanvas } from './textboxExportRenderer';
-import { distanceToLineSegment, getResizeCursor, getRotatedResize, ResizeHandle } from './canvasGeometry';
+import { distanceToLineSegment, getObjectControlAtPoint, getObjectControlPoints, getPointerRotation, getResizeCursor, getRotatedResize, ResizeHandle, snapRotationToCommonAngle } from './canvasGeometry';
 import { drawEndpoint, renderLines } from './lineRenderer';
 import { TextboxOverlayRenderer } from './textboxOverlayRenderer';
 import {
@@ -24,6 +24,16 @@ import {
   SelectionTarget,
   shouldDragChapterSelectionAsTimelines,
 } from './selectionBehavior';
+import {
+  getPinchViewport,
+  hasTouchMoved,
+  isMultiTouchDoubleTap,
+  TOUCH_HOLD_DURATION,
+  touchCentroid,
+  touchDistance,
+  TouchPoint,
+  getTouchPlacementHint,
+} from './touchBehavior';
 
 export interface TimelinePosition {
   id: string;
@@ -105,10 +115,25 @@ export class TimelineCanvas {
   private lastClickX = 0;
   private lastClickY = 0;
   private selectionCycle: SelectionCycleState | null = null;
-  private touchStartX = 0;
-  private touchStartY = 0;
-  private touchPanStart: { x: number; y: number; offsetX: number; offsetY: number; distance: number; zoom: number } | null = null;
-  private lastMultiTouchTap: { fingers: number; time: number } | null = null;
+  private touchSession: {
+    start: TouchPoint;
+    last: TouchPoint;
+    mode: 'background-pending' | 'object-pending' | 'object-drag' | 'direct-control' | 'pan' | 'marquee' | 'cancelled';
+  } | null = null;
+  private multiTouchSession: {
+    fingers: number;
+    startedAt: number;
+    startCenter: TouchPoint;
+    startDistance: number;
+    startOffsetX: number;
+    startOffsetY: number;
+    startZoom: number;
+    moved: boolean;
+  } | null = null;
+  private lastMultiTouchTap: { fingers: number; time: number; x: number; y: number } | null = null;
+  private touchHoldIndicator: { x: number; y: number; startedAt: number } | null = null;
+  private touchHoldTimer: number | null = null;
+  private dispatchingTouchMouse = false;
   private doubleTapInterval = 400;
   private onGestureUndo: (() => void) | null = null;
   private onGestureRedo: (() => void) | null = null;
@@ -180,6 +205,9 @@ export class TimelineCanvas {
   private chapterPasteMode = false;
   private timelineClipboardReady = false;
   private textboxOverlayContainer: HTMLElement | null = null;
+  private placementHint: HTMLElement;
+  private canvasNotice: HTMLElement;
+  private canvasNoticeTimer: number | null = null;
   private textboxRenderer: TextboxOverlayRenderer;
   private isDraggingTextbox: boolean = false;
   private draggedTextboxId: string | null = null;
@@ -198,6 +226,11 @@ export class TimelineCanvas {
   private resizeStartY: number = 0;
   private resizeOriginalWidth: number = 0;
   private resizeOriginalHeight: number = 0;
+  private isRotatingTextbox: boolean = false;
+  private rotatedTextboxId: string | null = null;
+  private rotationStartPointerAngle: number = 0;
+  private rotationOriginal: number = 0;
+  private rotationSnapping = true;
   private hoveredTextboxId: string | null = null; // For hover state
 
   // Lines
@@ -264,7 +297,8 @@ export class TimelineCanvas {
   private onReorderArc: ((timelineId: string, arcId: string, newPosition: number) => void) | null = null;
   private onBackgroundClick: (() => void) | null = null;
   private onTextboxMoved: ((textboxId: string, x: number, y: number) => void) | null = null;
-  private onTextboxResized: ((textboxId: string, width: number, height: number) => void) | null = null;
+  private onTextboxResized: ((textboxId: string, x: number, y: number, width: number, height: number) => void) | null = null;
+  private onTextboxRotated: ((textboxId: string, rotation: number) => void) | null = null;
   private onLineMoved: ((lineId: string, gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void) | null = null;
   private onMixedSelectionMoved: ((textboxes: { id: string; x: number; y: number }[], lines: Line[], timelines: { id: string; x: number; y: number }[]) => void) | null = null;
   private getStateChaptersForTimeline: ((timelineId: string) => Chapter[]) | null = null;
@@ -286,6 +320,14 @@ export class TimelineCanvas {
     this.textboxOverlayContainer.style.left = '0';
     this.textboxOverlayContainer.style.pointerEvents = 'auto';
     this.textboxRenderer = new TextboxOverlayRenderer(this.textboxOverlayContainer);
+    this.placementHint = document.createElement('div');
+    this.placementHint.className = 'canvas-placement-hint';
+    this.placementHint.setAttribute('role', 'status');
+    this.placementHint.setAttribute('aria-live', 'polite');
+    this.canvasNotice = document.createElement('div');
+    this.canvasNotice.className = 'canvas-notice canvas-notice-error';
+    this.canvasNotice.setAttribute('role', 'status');
+    this.canvasNotice.setAttribute('aria-live', 'polite');
     
     this.menu = new MenuSystem();
     
@@ -326,6 +368,8 @@ export class TimelineCanvas {
       this.textboxOverlayContainer.style.pointerEvents = 'none';
       this.container.appendChild(this.textboxOverlayContainer);
     }
+    this.container.appendChild(this.placementHint);
+    this.container.appendChild(this.canvasNotice);
     
     // Start animation loop
     this.startAnimationLoop();
@@ -365,7 +409,7 @@ export class TimelineCanvas {
     document.addEventListener('keydown', this.escapeKeyHandler);
     this.selectionKeyHandler = (e) => {
       const target = e.target as HTMLElement;
-      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT') return;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT' || target?.isContentEditable) return;
       const modifier = e.metaKey || e.ctrlKey;
       if (modifier && e.key.toLowerCase() === 'a') {
         e.preventDefault();
@@ -398,7 +442,7 @@ export class TimelineCanvas {
           this.selectedTextboxIds.size + this.selectedLineIds.size,
         );
         if (clipboardEligibility === 'cross-timeline') {
-          alert('Chapters can only be copied when they are on the same timeline.');
+          this.showCanvasNotice('Chapters cannot be copied between timelines.');
           return;
         }
         if (clipboardEligibility === 'empty') return;
@@ -437,8 +481,25 @@ export class TimelineCanvas {
           this.selectedChapterIds.size,
           this.selectedTextboxIds.size + this.selectedLineIds.size,
         );
-        if (clipboardEligibility === 'cross-timeline') { alert('Chapters can only be cut when they are on the same timeline.'); return; }
-        if (clipboardEligibility === 'empty') return;
+        if (clipboardEligibility === 'cross-timeline') {
+          this.showCanvasNotice('Chapters cannot be cut between timelines.');
+          return;
+        }
+        if (clipboardEligibility === 'empty') {
+          // Branches do not have a standalone paste representation, but Cut
+          // must still behave like the standard destructive selection action.
+          if (!this.selectedBranchIds.size) return;
+          e.preventDefault();
+          this.timelineClipboardReady = false;
+          this.onClearTimelineClipboard?.();
+          this.chapterClipboard = [];
+          this.elementClipboard = { textboxes: [], lines: [] };
+          this.onSelectionClipboardChanged?.(this.chapterClipboard, this.elementClipboard);
+          this.onDeleteSelection?.({ timelineIds: [], chapterIds: [], branchIds: [...this.selectedBranchIds], textboxIds: [], lineIds: [] });
+          this.clearSelection();
+          this.render();
+          return;
+        }
         this.timelineClipboardReady = false;
         this.onClearTimelineClipboard?.();
         e.preventDefault();
@@ -508,55 +569,124 @@ export class TimelineCanvas {
       this.render();
     });
 
-    // Touch reuses the mouse interaction model for one-finger tap/long-press
-    // while two fingers provide direct pan and pinch-zoom canvas navigation.
+    // Touch has an intent phase: moving empty canvas pans, while a stationary
+    // hold becomes marquee selection or unlocks an element drag.
     this.canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
       if (e.touches.length === 1) {
         const touch = e.touches[0];
-        this.touchStartX = touch.clientX; this.touchStartY = touch.clientY;
-        this.canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: touch.clientX, clientY: touch.clientY }));
-      } else if (e.touches.length === 2) {
-        const [first, second] = [e.touches[0], e.touches[1]];
-        const x = (first.clientX + second.clientX) / 2, y = (first.clientY + second.clientY) / 2;
-        this.touchPanStart = { x, y, offsetX: this.offsetX, offsetY: this.offsetY, distance: Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY), zoom: this.zoom };
-        if (this.dragDelayTimer) { clearTimeout(this.dragDelayTimer); this.dragDelayTimer = null; }
-        this.pendingDragTimelineId = null; this.pendingDragChapterId = null; this.pendingDragTextboxId = null;
-        this.isDragging = false;
-      } else if (e.touches.length === 3) {
-        this.touchPanStart = null;
+        const point = { clientX: touch.clientX, clientY: touch.clientY };
+        const rect = this.canvas.getBoundingClientRect();
+        const canvasX = point.clientX - rect.left, canvasY = point.clientY - rect.top;
+        const immediate = this.menu.isOpen() || this.menu.isClickingButton(canvasX, canvasY)
+          || !!this.placementMode || this.insertionMode || this.branchInsertionMode || this.lineInsertionMode;
+        const touchTargets = this.getSelectionTargetsAtPoint(canvasX, canvasY);
+        const hasTarget = touchTargets.length > 0;
+        const usesDirectControl = touchTargets[0]?.kind === 'textbox'
+          && (touchTargets[0].type === 'resize-handle' || touchTargets[0].type === 'rotation-handle');
+        const likelyDoubleTap = hasTarget
+          && Date.now() - this.lastClickTime < this.doubleTapInterval
+          && Math.abs(canvasX - this.lastClickX) < 10
+          && Math.abs(canvasY - this.lastClickY) < 10;
+        this.touchSession = { start: point, last: point, mode: usesDirectControl ? 'direct-control' : hasTarget ? 'object-pending' : 'background-pending' };
+        if (hasTarget || immediate) this.dispatchTouchMouse('mousedown', point);
+        if (immediate || likelyDoubleTap || usesDirectControl) {
+          if (!usesDirectControl) this.touchSession.mode = 'cancelled';
+          return;
+        }
+        this.beginTouchHold(canvasX, canvasY, () => {
+          if (!this.touchSession) return;
+          if (this.touchSession.mode === 'background-pending') {
+            this.clearSelection();
+            this.onBackgroundClick?.();
+            this.selectionRect = { startX: canvasX, startY: canvasY, endX: canvasX, endY: canvasY };
+            this.touchSession.mode = 'marquee';
+          } else if (this.touchSession.mode === 'object-pending') {
+            this.touchSession.mode = 'object-drag';
+          }
+          this.touchHoldIndicator = null;
+          this.render();
+        });
+      } else {
+        this.beginMultiTouch(e.touches);
       }
     }, { passive: false });
     this.canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      if (e.touches.length === 1 && !this.touchPanStart) {
+      if (e.touches.length === 1 && this.touchSession && !this.multiTouchSession) {
         const touch = e.touches[0];
-        this.canvas.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: touch.clientX, clientY: touch.clientY }));
-      } else if (e.touches.length === 2 && this.touchPanStart) {
-        const [first, second] = [e.touches[0], e.touches[1]];
-        const x = (first.clientX + second.clientX) / 2, y = (first.clientY + second.clientY) / 2;
-        const distance = Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
-        const nextZoom = Math.max(0.5, Math.min(3, this.touchPanStart.zoom * distance / this.touchPanStart.distance));
-        this.offsetX = this.touchPanStart.offsetX + (x - this.touchPanStart.x) - (x - this.touchPanStart.x) * (nextZoom / this.touchPanStart.zoom - 1);
-        this.offsetY = this.touchPanStart.offsetY + (y - this.touchPanStart.y) - (y - this.touchPanStart.y) * (nextZoom / this.touchPanStart.zoom - 1);
-        this.zoom = nextZoom; this.render();
+        const point = { clientX: touch.clientX, clientY: touch.clientY };
+        const session = this.touchSession;
+        session.last = point;
+        if ((session.mode === 'background-pending' || session.mode === 'object-pending') && hasTouchMoved(session.start, point)) {
+          this.cancelTouchHold();
+          if (session.mode === 'background-pending') {
+            session.mode = 'pan';
+            this.isDragging = true;
+            this.dragStartX = session.start.clientX;
+            this.dragStartY = session.start.clientY;
+            this.dragStartOffsetX = this.offsetX;
+            this.dragStartOffsetY = this.offsetY;
+            this.onBackgroundClick?.();
+          } else {
+            session.mode = 'cancelled';
+            this.cancelPendingTouchDrag();
+          }
+        }
+        if (session.mode === 'pan') {
+          this.offsetX = this.dragStartOffsetX + point.clientX - this.dragStartX;
+          this.offsetY = this.dragStartOffsetY + point.clientY - this.dragStartY;
+          this.render();
+        } else if (session.mode === 'marquee' || session.mode === 'object-pending' || session.mode === 'object-drag' || session.mode === 'direct-control') {
+          this.dispatchTouchMouse('mousemove', point);
+        }
+      } else if (e.touches.length === 2 && this.multiTouchSession) {
+        const points = Array.from(e.touches, touch => ({ clientX: touch.clientX, clientY: touch.clientY }));
+        const rect = this.canvas.getBoundingClientRect();
+        const center = touchCentroid(points);
+        const localCenter = { clientX: center.clientX - rect.left, clientY: center.clientY - rect.top };
+        const distance = touchDistance(points[0], points[1]);
+        const start = this.multiTouchSession;
+        if (hasTouchMoved(start.startCenter, localCenter) || Math.abs(distance - start.startDistance) > 8) start.moved = true;
+        const viewport = getPinchViewport({
+          startCenter: start.startCenter, currentCenter: localCenter,
+          startDistance: start.startDistance, currentDistance: distance,
+          startOffsetX: start.startOffsetX, startOffsetY: start.startOffsetY, startZoom: start.startZoom,
+        });
+        this.offsetX = viewport.offsetX; this.offsetY = viewport.offsetY; this.zoom = viewport.zoom;
+        this.render();
       }
     }, { passive: false });
     this.canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
-      const fingers = e.changedTouches.length + e.touches.length;
-      if (fingers >= 2) {
-        const now = Date.now();
-        if (this.lastMultiTouchTap?.fingers === fingers && now - this.lastMultiTouchTap.time <= this.doubleTapInterval) {
-          if (fingers === 2) this.onGestureUndo?.();
-          if (fingers === 3) this.onGestureRedo?.();
-          this.lastMultiTouchTap = null;
-        } else this.lastMultiTouchTap = { fingers, time: now };
-        this.touchPanStart = null;
+      if (this.multiTouchSession) {
+        if (e.touches.length === 0) this.finishMultiTouch();
         return;
       }
-      if (this.touchPanStart) { this.touchPanStart = null; return; }
-      this.canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: this.touchStartX, clientY: this.touchStartY }));
+      if (e.touches.length > 0 || !this.touchSession) return;
+      const session = this.touchSession;
+      this.cancelTouchHold();
+      if (session.mode === 'background-pending') {
+        this.clearSelection();
+        this.onBackgroundClick?.();
+        this.render();
+      } else if (session.mode === 'object-pending' || session.mode === 'object-drag' || session.mode === 'direct-control' || session.mode === 'marquee' || session.mode === 'cancelled') {
+        this.dispatchTouchMouse('mouseup', session.last);
+      } else {
+        this.isDragging = false;
+        this.canvas.style.cursor = 'grab';
+      }
+      this.touchSession = null;
+    }, { passive: false });
+    this.canvas.addEventListener('touchcancel', (e) => {
+      e.preventDefault();
+      this.cancelTouchHold();
+      this.cancelPendingTouchDrag();
+      this.touchSession = null;
+      this.multiTouchSession = null;
+      this.selectionRect = null;
+      this.isDragging = false;
+      this.render();
     }, { passive: false });
 
     // Mouse drag
@@ -745,7 +875,7 @@ export class TimelineCanvas {
 
         // Check for double-click on timeline title. Modifier clicks are selection-only.
         const now = Date.now();
-        const isDoubleClick = now - this.lastClickTime < 300
+        const isDoubleClick = now - this.lastClickTime < this.doubleTapInterval
           && Math.abs(mouseX - this.lastClickX) < 10
           && Math.abs(mouseY - this.lastClickY) < 10;
         const selectionTargets = this.getSelectionTargetsAtPoint(mouseX, mouseY);
@@ -794,7 +924,7 @@ export class TimelineCanvas {
           
           // Check for double-click on a textbox
           const textboxClickResult = this.getClickedTextboxElement(mouseX, mouseY);
-          if (textboxClickResult && this.onEditTextbox) {
+          if (textboxClickResult?.type === 'textbox-body' && this.onEditTextbox) {
             this.onEditTextbox(textboxClickResult.textboxId);
             return;
           }
@@ -874,7 +1004,6 @@ export class TimelineCanvas {
           else if (!this.selectedChapterIds.has(draggableChapter.chapterId)) this.selectOnly(this.selectedChapterIds, draggableChapter.chapterId);
           if (e.metaKey || e.ctrlKey) { this.render(); return; }
           this.draggedChapterIds = this.getContiguousSelectedChapterIds(draggableChapter.timelineId, draggableChapter.chapterId);
-          this.selectedChapterIds = new Set(this.draggedChapterIds);
           const dragTimeline = this.timelines.find(timeline => timeline.id === draggableChapter.timelineId);
           this.selectedChapterDragOrigins = new Map((dragTimeline?.chapters ?? [])
             .filter(chapter => this.draggedChapterIds.includes(chapter.id))
@@ -893,7 +1022,7 @@ export class TimelineCanvas {
               this.canvas.style.cursor = 'move';
             }
             this.dragDelayTimer = null;
-          }, 150);
+          }, this.getDragActivationDelay());
           return;
         }
 
@@ -929,7 +1058,7 @@ export class TimelineCanvas {
               this.canvas.style.cursor = 'move';
             }
             this.dragDelayTimer = null;
-          }, 150);
+          }, this.getDragActivationDelay());
           return;
         }
 
@@ -943,7 +1072,50 @@ export class TimelineCanvas {
           else if (e.metaKey || e.ctrlKey) this.selectedTextboxIds.delete(textboxClickResult.textboxId);
           else if (!this.selectedTextboxIds.has(textboxClickResult.textboxId)) this.selectOnly(this.selectedTextboxIds, textboxClickResult.textboxId);
           if (e.metaKey || e.ctrlKey) { this.render(); return; }
-          if (textboxClickResult.type === 'resize-handle') {
+          if (textboxClickResult.type === 'rotation-handle') {
+            const textbox = this.textboxes.find(t => t.id === textboxClickResult.textboxId);
+            if (!textbox) return;
+            const centerX = (textbox.x + textbox.width / 2) * this.zoom + this.offsetX;
+            const centerY = (textbox.y + textbox.height / 2) * this.zoom + this.offsetY;
+            this.isRotatingTextbox = true;
+            this.rotatedTextboxId = textbox.id;
+            this.rotationStartPointerAngle = Math.atan2(mouseY - centerY, mouseX - centerX) * 180 / Math.PI;
+            this.rotationOriginal = textbox.rotation ?? 0;
+            this.canvas.style.cursor = 'grabbing';
+
+            const handleDocumentMouseMove = (event: MouseEvent) => {
+              const active = this.textboxes.find(t => t.id === this.rotatedTextboxId);
+              if (!active) return;
+              const rect = this.canvas.getBoundingClientRect();
+              const pointerX = event.clientX - rect.left;
+              const pointerY = event.clientY - rect.top;
+              const activeCenterX = (active.x + active.width / 2) * this.zoom + this.offsetX;
+              const activeCenterY = (active.y + active.height / 2) * this.zoom + this.offsetY;
+              const freeRotation = getPointerRotation(
+                activeCenterX, activeCenterY, pointerX, pointerY,
+                this.rotationStartPointerAngle, this.rotationOriginal,
+                event.shiftKey ? 15 : 0,
+              );
+              active.rotation = event.shiftKey
+                ? freeRotation
+                : snapRotationToCommonAngle(freeRotation, this.rotationSnapping);
+              this.render();
+            };
+            const handleDocumentMouseUp = () => {
+              document.removeEventListener('mousemove', handleDocumentMouseMove);
+              document.removeEventListener('mouseup', handleDocumentMouseUp);
+              if (this.isRotatingTextbox && this.rotatedTextboxId) {
+                const active = this.textboxes.find(t => t.id === this.rotatedTextboxId);
+                if (active) this.onTextboxRotated?.(active.id, active.rotation ?? 0);
+              }
+              this.isRotatingTextbox = false;
+              this.rotatedTextboxId = null;
+              this.canvas.style.cursor = 'grab';
+            };
+            document.addEventListener('mousemove', handleDocumentMouseMove);
+            document.addEventListener('mouseup', handleDocumentMouseUp);
+            return;
+          } else if (textboxClickResult.type === 'resize-handle') {
             // Start textbox resize
             this.isResizingTextbox = true;
             this.resizedTextboxId = textboxClickResult.textboxId;
@@ -984,7 +1156,7 @@ export class TimelineCanvas {
                   y: this.textboxOriginalY,
                   width: this.resizeOriginalWidth,
                   height: this.resizeOriginalHeight,
-                }, resizeHandle, worldDeltaX, worldDeltaY, textbox.shapeType ? textbox.rotation ?? 0 : 0, e.altKey);
+                }, resizeHandle, worldDeltaX, worldDeltaY, textbox.rotation ?? 0, e.altKey);
                 Object.assign(textbox, resized);
                 this.render();
               }
@@ -997,7 +1169,7 @@ export class TimelineCanvas {
               if (this.isResizingTextbox && this.resizedTextboxId && this.onTextboxResized) {
                 const textbox = this.textboxes.find(t => t.id === this.resizedTextboxId);
                 if (textbox) {
-                  this.onTextboxResized(textbox.id, textbox.width, textbox.height);
+                  this.onTextboxResized(textbox.id, textbox.x, textbox.y, textbox.width, textbox.height);
                 }
               }
               
@@ -1037,7 +1209,7 @@ export class TimelineCanvas {
                 this.canvas.style.cursor = 'move';
               }
               this.dragDelayTimer = null;
-            }, 150);
+            }, this.getDragActivationDelay());
             return;
           }
         }
@@ -1116,7 +1288,7 @@ export class TimelineCanvas {
                 document.addEventListener('mouseup', handleDocumentMouseUp);
               }
               this.dragDelayTimer = null;
-            }, 150);
+            }, this.getDragActivationDelay());
           }
           return;
         }
@@ -1182,7 +1354,7 @@ export class TimelineCanvas {
               document.addEventListener('mouseup', handleDocumentMouseUp);
             }
             this.dragDelayTimer = null;
-          }, 150);
+          }, this.getDragActivationDelay());
           return;
         }
 
@@ -1291,6 +1463,13 @@ export class TimelineCanvas {
       } else if (this.isDraggingChapter && this.draggedChapterId && this.draggedChapterTimelineId) {
         // Handle chapter dragging
         const deltaX = mouseX - this.chapterDragStartX;
+
+        // A click (including Shift-click) keeps the complete selection. Only
+        // an actual drag narrows disjoint chapters to the run being moved.
+        if (this.selectedChapterIds.size !== this.draggedChapterIds.length
+          || this.draggedChapterIds.some(id => !this.selectedChapterIds.has(id))) {
+          this.selectedChapterIds = new Set(this.draggedChapterIds);
+        }
         
         const timeline = this.timelines.find(t => t.id === this.draggedChapterTimelineId);
         if (timeline && timeline.chapters) {
@@ -1425,6 +1604,8 @@ export class TimelineCanvas {
           const textboxClickResult = this.getClickedTextboxElement(mouseX, mouseY);
           if (textboxClickResult?.type === 'resize-handle') {
             this.canvas.style.cursor = getResizeCursor(textboxClickResult.handle as ResizeHandle);
+          } else if (textboxClickResult?.type === 'rotation-handle') {
+            this.canvas.style.cursor = 'grab';
           } else {
             // Check if hovering over a branch
             const hoveredBranchId = this.getClickedBranch(mouseX, mouseY);
@@ -1456,7 +1637,9 @@ export class TimelineCanvas {
         const apply = (ids: Set<string>, id: string) => marqueeMode === 'remove' ? ids.delete(id) : ids.add(id);
         for (const textbox of this.textboxes) {
           const x = textbox.x * this.zoom + this.offsetX, y = textbox.y * this.zoom + this.offsetY;
-          if (x >= left && x + textbox.width * this.zoom <= right && y >= top && y + textbox.height * this.zoom <= bottom) apply(this.selectedTextboxIds, textbox.id);
+          const corners = getObjectControlPoints(x, y, textbox.width * this.zoom, textbox.height * this.zoom, textbox.rotation ?? 0)
+            .filter(point => point.control === 'nw' || point.control === 'ne' || point.control === 'sw' || point.control === 'se');
+          if (corners.every(point => point.x >= left && point.x <= right && point.y >= top && point.y <= bottom)) apply(this.selectedTextboxIds, textbox.id);
         }
         for (const timeline of this.timelines) for (const chapter of timeline.chapters ?? []) {
           if (chapter.title === 'Head' || chapter.title === 'Tail') continue;
@@ -1469,7 +1652,15 @@ export class TimelineCanvas {
           const x = timeline.x * this.zoom + this.offsetX;
           const y = timeline.y * this.zoom + this.offsetY;
           const width = Math.max(this.gridSize * 2 * this.zoom, ((lastChapter?.x ?? 1) + (lastChapter?.width ?? 1)) * this.gridSize * this.zoom + 20);
-          if (x - 6 >= left && x + width + 6 <= right && y - 48 >= top && y + 18 <= bottom) apply(this.selectedTimelineIds, timeline.id);
+          const enclosesTimeline = x - 6 >= left && x + width + 6 <= right && y - 48 >= top && y + 18 <= bottom;
+          const enclosesEndpoint = (timeline.chapters ?? [])
+            .filter(chapter => chapter.title === 'Head' || chapter.title === 'Tail')
+            .some(chapter => {
+              const endpointX = x + chapter.x * this.gridSize * this.zoom;
+              const endpointWidth = chapter.width * this.gridSize * this.zoom;
+              return endpointX >= left && endpointX + endpointWidth <= right && y - 30 >= top && y <= bottom;
+            });
+          if (enclosesTimeline || enclosesEndpoint) apply(this.selectedTimelineIds, timeline.id);
         }
         for (const line of this.lines) {
           const x1 = line.gridX1 * this.gridSize * this.zoom + this.offsetX, y1 = line.gridY1 * this.gridSize * this.zoom + this.offsetY;
@@ -1550,8 +1741,13 @@ export class TimelineCanvas {
       if (this.isResizingTextbox && this.resizedTextboxId && this.onTextboxResized) {
         const textbox = this.textboxes.find(t => t.id === this.resizedTextboxId);
         if (textbox) {
-          this.onTextboxResized(textbox.id, textbox.width, textbox.height);
+          this.onTextboxResized(textbox.id, textbox.x, textbox.y, textbox.width, textbox.height);
         }
+      }
+
+      if (this.isRotatingTextbox && this.rotatedTextboxId && this.onTextboxRotated) {
+        const textbox = this.textboxes.find(t => t.id === this.rotatedTextboxId);
+        if (textbox) this.onTextboxRotated(textbox.id, textbox.rotation ?? 0);
       }
       
       this.isDragging = false;
@@ -1560,6 +1756,7 @@ export class TimelineCanvas {
       this.isDraggingArc = false;
       this.isDraggingTextbox = false;
       this.isResizingTextbox = false;
+      this.isRotatingTextbox = false;
       this.draggedChapterId = null;
       this.draggedChapterIds = [];
       this.draggedChapterTimelineId = null;
@@ -1567,6 +1764,7 @@ export class TimelineCanvas {
       this.draggedArcTimelineId = null;
       this.draggedTextboxId = null;
       this.resizedTextboxId = null;
+      this.rotatedTextboxId = null;
       this.hoveredInsertionPoint = { timelineId: null, position: -1 };
       this.hoveredArcInsertionPoint = { timelineId: null, position: -1 };
       this.timelineCreationPreviewPoint = null;
@@ -1611,6 +1809,11 @@ export class TimelineCanvas {
   destroy(): void {
     this.destroyed = true;
     if (this.dragDelayTimer !== null) clearTimeout(this.dragDelayTimer);
+    if (this.touchHoldTimer !== null) clearTimeout(this.touchHoldTimer);
+    if (this.canvasNoticeTimer !== null) clearTimeout(this.canvasNoticeTimer);
+    this.touchHoldTimer = null;
+    this.touchHoldIndicator = null;
+    this.canvasNoticeTimer = null;
     if (this.escapeKeyHandler) document.removeEventListener('keydown', this.escapeKeyHandler);
     if (this.selectionKeyHandler) document.removeEventListener('keydown', this.selectionKeyHandler);
     if (this.resizeHandler) window.removeEventListener('resize', this.resizeHandler);
@@ -1873,6 +2076,10 @@ export class TimelineCanvas {
     this.doubleTapInterval = speed === 'faster' ? 250 : speed === 'slow' ? 600 : 400;
   }
 
+  setRotationSnapping(enabled: boolean | undefined): void {
+    this.rotationSnapping = enabled !== false;
+  }
+
   setOnSelectionDelete(callback: (selection: CanvasSelectionDeletion) => void): void {
     this.onDeleteSelection = callback;
   }
@@ -1942,8 +2149,12 @@ export class TimelineCanvas {
     this.onTextboxMoved = callback;
   }
 
-  setOnTextboxResized(callback: (textboxId: string, width: number, height: number) => void): void {
+  setOnTextboxResized(callback: (textboxId: string, x: number, y: number, width: number, height: number) => void): void {
     this.onTextboxResized = callback;
+  }
+
+  setOnTextboxRotated(callback: (textboxId: string, rotation: number) => void): void {
+    this.onTextboxRotated = callback;
   }
 
   setOnAddLine(callback: (gridX1: number, gridY1: number, gridX2: number, gridY2: number) => void): void {
@@ -2143,7 +2354,7 @@ export class TimelineCanvas {
 
     // Textboxes
     this.textboxes.forEach((tb) => {
-      const radians = ((tb.shapeType ? tb.rotation ?? 0 : 0) * Math.PI) / 180;
+      const radians = ((tb.rotation ?? 0) * Math.PI) / 180;
       const rotatedWidth = Math.abs(tb.width * Math.cos(radians)) + Math.abs(tb.height * Math.sin(radians));
       const rotatedHeight = Math.abs(tb.width * Math.sin(radians)) + Math.abs(tb.height * Math.cos(radians));
       const centerX = tb.x + tb.width / 2;
@@ -2255,6 +2466,7 @@ export class TimelineCanvas {
   }
 
   private render(): void {
+    this.updatePlacementHint();
     // Update centering animation
     if (this.isCentering) {
       const elapsed = Date.now() - this.centeringStartTime;
@@ -2279,7 +2491,7 @@ export class TimelineCanvas {
     const menuAnimating = this.menu.update();
     
     // Update animation running state based on menu and other animations
-    this.animationRunning = menuAnimating || this.isCentering;
+    this.animationRunning = menuAnimating || this.isCentering || !!this.touchHoldIndicator;
 
     // Clear canvas with light background
     this.ctx.fillStyle = '#f5f5f5';
@@ -2327,6 +2539,32 @@ export class TimelineCanvas {
     if (!this.suppressMenuRender) {
       this.renderMenuCanvas();
     }
+  }
+
+  private updatePlacementHint(): void {
+    const hint = getTouchPlacementHint({
+      placementMode: this.placementMode,
+      chapterInsertion: this.insertionMode,
+      chapterPaste: this.chapterPasteMode,
+      branchInsertion: this.branchInsertionMode,
+      hasBranchStart: !!this.branchFirstPoint,
+      lineInsertion: this.lineInsertionMode,
+      hasLineStart: !!this.lineFirstPoint,
+    });
+    const visible = document.documentElement.dataset.controlScheme === 'touch' && !!hint;
+    const nextText = visible ? hint! : '';
+    if (this.placementHint.textContent !== nextText) this.placementHint.textContent = nextText;
+    if (this.placementHint.dataset.visible !== String(visible)) this.placementHint.dataset.visible = String(visible);
+  }
+
+  private showCanvasNotice(message: string): void {
+    if (this.canvasNoticeTimer !== null) window.clearTimeout(this.canvasNoticeTimer);
+    this.canvasNotice.textContent = message;
+    this.canvasNotice.dataset.visible = 'true';
+    this.canvasNoticeTimer = window.setTimeout(() => {
+      this.canvasNotice.dataset.visible = 'false';
+      this.canvasNoticeTimer = null;
+    }, 3200);
   }
 
   private clearSelection(): void {
@@ -2436,7 +2674,95 @@ export class TimelineCanvas {
         this.canvas.style.cursor = 'move';
       }
       this.dragDelayTimer = null;
-    }, 150);
+    }, this.getDragActivationDelay());
+  }
+
+  private getDragActivationDelay(): number {
+    return this.dispatchingTouchMouse ? TOUCH_HOLD_DURATION : 150;
+  }
+
+  private dispatchTouchMouse(type: 'mousedown' | 'mousemove' | 'mouseup', point: TouchPoint): void {
+    this.dispatchingTouchMouse = true;
+    this.canvas.dispatchEvent(new MouseEvent(type, {
+      bubbles: true,
+      button: 0,
+      clientX: point.clientX,
+      clientY: point.clientY,
+    }));
+    this.dispatchingTouchMouse = false;
+  }
+
+  private beginTouchHold(x: number, y: number, onComplete: () => void): void {
+    this.cancelTouchHold();
+    this.touchHoldIndicator = { x, y, startedAt: Date.now() };
+    this.animationRunning = true;
+    this.touchHoldTimer = window.setTimeout(() => {
+      this.touchHoldTimer = null;
+      onComplete();
+    }, TOUCH_HOLD_DURATION);
+    this.render();
+  }
+
+  private cancelTouchHold(): void {
+    if (this.touchHoldTimer !== null) window.clearTimeout(this.touchHoldTimer);
+    this.touchHoldTimer = null;
+    this.touchHoldIndicator = null;
+  }
+
+  private cancelPendingTouchDrag(): void {
+    if (this.dragDelayTimer !== null) window.clearTimeout(this.dragDelayTimer);
+    this.dragDelayTimer = null;
+    this.pendingDragTimelineId = null;
+    this.pendingDragChapterId = null;
+    this.pendingDragChapterTimelineId = null;
+    this.pendingDragArcId = null;
+    this.pendingDragArcTimelineId = null;
+    this.pendingDragTextboxId = null;
+    this.pendingDragLineId = null;
+    this.pendingDragLineEndpointLineId = null;
+    this.pendingDragLineEndpoint = null;
+  }
+
+  private beginMultiTouch(touches: TouchList): void {
+    this.cancelTouchHold();
+    if (this.touchSession?.mode === 'object-pending') this.dispatchTouchMouse('mouseup', this.touchSession.last);
+    this.cancelPendingTouchDrag();
+    this.touchSession = null;
+    this.selectionRect = null;
+    this.isDragging = false;
+    const points = Array.from(touches, touch => ({ clientX: touch.clientX, clientY: touch.clientY }));
+    const rect = this.canvas.getBoundingClientRect();
+    const center = touchCentroid(points);
+    const localCenter = { clientX: center.clientX - rect.left, clientY: center.clientY - rect.top };
+    this.multiTouchSession = {
+      fingers: Math.min(3, touches.length),
+      startedAt: Date.now(),
+      startCenter: localCenter,
+      startDistance: touches.length >= 2 ? touchDistance(points[0], points[1]) : 1,
+      startOffsetX: this.offsetX,
+      startOffsetY: this.offsetY,
+      startZoom: this.zoom,
+      moved: false,
+    };
+  }
+
+  private finishMultiTouch(): void {
+    const session = this.multiTouchSession;
+    this.multiTouchSession = null;
+    if (!session || session.moved || Date.now() - session.startedAt > 350) return;
+    const tap = {
+      fingers: session.fingers,
+      time: Date.now(),
+      x: session.startCenter.clientX,
+      y: session.startCenter.clientY,
+    };
+    if (isMultiTouchDoubleTap(this.lastMultiTouchTap, tap, this.doubleTapInterval)) {
+      if (tap.fingers === 2) this.onGestureUndo?.();
+      if (tap.fingers === 3) this.onGestureRedo?.();
+      this.lastMultiTouchTap = null;
+    } else {
+      this.lastMultiTouchTap = tap;
+    }
   }
 
   private getContiguousSelectedChapterIds(timelineId: string, chapterId: string): string[] {
@@ -2479,15 +2805,83 @@ export class TimelineCanvas {
         this.imageCache.set(textbox.id, image);
       }
       if (!image.complete || !image.naturalWidth) continue;
-      this.ctx.drawImage(image, textbox.x * this.zoom + this.offsetX, textbox.y * this.zoom + this.offsetY, textbox.width * this.zoom, textbox.height * this.zoom);
+      const x = textbox.x * this.zoom + this.offsetX;
+      const y = textbox.y * this.zoom + this.offsetY;
+      const width = textbox.width * this.zoom;
+      const height = textbox.height * this.zoom;
+      this.ctx.save();
+      this.ctx.translate(x + width / 2, y + height / 2);
+      this.ctx.rotate(((textbox.rotation ?? 0) * Math.PI) / 180);
+      this.ctx.drawImage(image, -width / 2, -height / 2, width, height);
+      this.ctx.restore();
     }
   }
 
   private renderMenuCanvas(): void {
     // Clear menu canvas
     this.menuCtx.clearRect(0, 0, this.menuCanvas.width, this.menuCanvas.height);
+    this.drawTextboxControls();
     // Render menu to menu canvas
     this.menu.render(this.menuCtx, this.menuCanvas.height, this.hoveredMenuOptionId);
+    // Keep touch feedback on the top canvas layer, above DOM textbox overlays.
+    if (this.touchHoldIndicator) {
+      const progress = Math.min(1, (Date.now() - this.touchHoldIndicator.startedAt) / TOUCH_HOLD_DURATION);
+      this.menuCtx.save();
+      this.menuCtx.lineWidth = 4;
+      this.menuCtx.strokeStyle = 'rgba(15, 23, 42, 0.25)';
+      this.menuCtx.beginPath();
+      this.menuCtx.arc(this.touchHoldIndicator.x, this.touchHoldIndicator.y, 22, 0, Math.PI * 2);
+      this.menuCtx.stroke();
+      this.menuCtx.strokeStyle = '#22d3ee';
+      this.menuCtx.lineCap = 'round';
+      this.menuCtx.beginPath();
+      this.menuCtx.arc(this.touchHoldIndicator.x, this.touchHoldIndicator.y, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+      this.menuCtx.stroke();
+      this.menuCtx.restore();
+    }
+  }
+
+  private drawTextboxControls(): void {
+    for (const textbox of this.textboxes) {
+      if (!this.selectedTextboxIds.has(textbox.id)) continue;
+      const x = textbox.x * this.zoom + this.offsetX;
+      const y = textbox.y * this.zoom + this.offsetY;
+      const width = textbox.width * this.zoom;
+      const height = textbox.height * this.zoom;
+      const points = getObjectControlPoints(x, y, width, height, textbox.rotation ?? 0);
+      const resizePoints = points.filter(point => point.control !== 'rotate');
+      const rotationPoint = points.find(point => point.control === 'rotate');
+      const northWest = points.find(point => point.control === 'nw');
+
+      this.menuCtx.save();
+      this.menuCtx.strokeStyle = '#1976d2';
+      this.menuCtx.fillStyle = '#ffffff';
+      this.menuCtx.lineWidth = 2;
+      for (const point of resizePoints) {
+        this.menuCtx.beginPath();
+        this.menuCtx.rect(point.x - 5, point.y - 5, 10, 10);
+        this.menuCtx.fill();
+        this.menuCtx.stroke();
+      }
+      if (rotationPoint && northWest) {
+        this.menuCtx.beginPath();
+        this.menuCtx.moveTo(northWest.x, northWest.y);
+        this.menuCtx.lineTo(rotationPoint.x, rotationPoint.y);
+        this.menuCtx.stroke();
+        this.menuCtx.beginPath();
+        this.menuCtx.arc(rotationPoint.x, rotationPoint.y, 11, 0, Math.PI * 2);
+        this.menuCtx.fillStyle = '#ffffff';
+        this.menuCtx.fill();
+        this.menuCtx.strokeStyle = '#1976d2';
+        this.menuCtx.stroke();
+        this.menuCtx.fillStyle = '#1976d2';
+        this.menuCtx.font = 'bold 15px sans-serif';
+        this.menuCtx.textAlign = 'center';
+        this.menuCtx.textBaseline = 'middle';
+        this.menuCtx.fillText('↻', rotationPoint.x, rotationPoint.y + 0.5);
+      }
+      this.menuCtx.restore();
+    }
   }
 
   private drawGrid(): void {
@@ -3585,8 +3979,24 @@ export class TimelineCanvas {
   }
 
   private getClickedTextboxCandidates(mouseX: number, mouseY: number): { type: string; textboxId: string; handle?: string }[] {
-    const borderHitRadius = 8; // Pixels from edge to count as border click
     const candidates: { type: string; textboxId: string; handle?: string }[] = [];
+    // Selected controls are painted above every object, so they also win hit
+    // testing when a handle overlaps another floating object's body.
+    for (const textbox of this.textboxes) {
+      if (!this.selectedTextboxIds?.has(textbox.id)) continue;
+      const screenX = textbox.x * this.zoom + this.offsetX;
+      const screenY = textbox.y * this.zoom + this.offsetY;
+      const control = getObjectControlAtPoint(
+        getObjectControlPoints(screenX, screenY, textbox.width * this.zoom, textbox.height * this.zoom, textbox.rotation ?? 0),
+        mouseX,
+        mouseY,
+        16,
+      );
+      if (control === 'rotate') candidates.push({ type: 'rotation-handle', textboxId: textbox.id });
+      else if (control) candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: control });
+    }
+    if (candidates.length) return candidates;
+
     for (const textbox of this.textboxes) {
       const screenX = textbox.x * this.zoom + this.offsetX;
       const screenY = textbox.y * this.zoom + this.offsetY;
@@ -3594,51 +4004,15 @@ export class TimelineCanvas {
       const screenHeight = textbox.height * this.zoom;
       const centerX = screenX + screenWidth / 2;
       const centerY = screenY + screenHeight / 2;
-      const angle = -((textbox.shapeType ? textbox.rotation ?? 0 : 0) * Math.PI) / 180;
+      const rotation = textbox.rotation ?? 0;
+      const angle = -(rotation * Math.PI) / 180;
       const dx = mouseX - centerX;
       const dy = mouseY - centerY;
       const localMouseX = centerX + dx * Math.cos(angle) - dy * Math.sin(angle);
       const localMouseY = centerY + dx * Math.sin(angle) + dy * Math.cos(angle);
 
-      // Check if clicking on textbox body first
       if (localMouseX >= screenX && localMouseX <= screenX + screenWidth &&
           localMouseY >= screenY && localMouseY <= screenY + screenHeight) {
-        
-        // Check if clicking on borders for resizing
-        const leftEdge = Math.abs(localMouseX - screenX) <= borderHitRadius;
-        const rightEdge = Math.abs(localMouseX - (screenX + screenWidth)) <= borderHitRadius;
-        const topEdge = Math.abs(localMouseY - screenY) <= borderHitRadius;
-        const bottomEdge = Math.abs(localMouseY - (screenY + screenHeight)) <= borderHitRadius;
-        
-        // Corner handles (check corners first for priority)
-        if (topEdge && leftEdge) {
-          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'nw' }); continue;
-        }
-        if (topEdge && rightEdge) {
-          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'ne' }); continue;
-        }
-        if (bottomEdge && leftEdge) {
-          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'sw' }); continue;
-        }
-        if (bottomEdge && rightEdge) {
-          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'se' }); continue;
-        }
-        
-        // Edge handles
-        if (topEdge) {
-          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'n' }); continue;
-        }
-        if (bottomEdge) {
-          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 's' }); continue;
-        }
-        if (leftEdge) {
-          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'w' }); continue;
-        }
-        if (rightEdge) {
-          candidates.push({ type: 'resize-handle', textboxId: textbox.id, handle: 'e' }); continue;
-        }
-        
-        // Body click
         candidates.push({ type: 'textbox-body', textboxId: textbox.id });
       }
     }
