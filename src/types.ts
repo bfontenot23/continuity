@@ -25,6 +25,7 @@ export interface Branch {
   id: string;
   description?: string;
   lineStyle?: 'solid' | 'dashed'; // Default: solid
+  lineWidth?: number; // Stroke width in screen pixels (default: 3)
   startEndpointStyle?: 'dot' | 'arrow' | 'none'; // Default: dot
   endEndpointStyle?: 'dot' | 'arrow' | 'none'; // Default: dot
   // Start point: reference to a continuity and chapter this branch starts from
@@ -47,6 +48,19 @@ export interface Textbox {
   fontSize: number; // Font size in pixels
   alignX?: 'left' | 'center' | 'right'; // Horizontal alignment (default: left)
   alignY?: 'top' | 'middle' | 'bottom'; // Vertical alignment (default: top)
+  /** When present this textbox is rendered as a shape, retaining markdown text behavior. */
+  shapeType?: 'square' | 'circle' | 'triangle';
+  /** CSS rgba() fill used by shapes. */
+  shapeFillColor?: string;
+  /** CSS rgba() outline used by shapes. */
+  shapeOutlineColor?: string;
+  /** Shape outline width in screen pixels. */
+  shapeOutlineWidth?: number;
+  /** Clockwise rotation around the object's center, in degrees. */
+  rotation?: number;
+  /** Embedded image payload. Images intentionally live in the portable .cty JSON. */
+  imageDataUrl?: string;
+  alt?: string;
 }
 
 export interface Line {
@@ -56,6 +70,7 @@ export interface Line {
   gridX2: number; // Ending grid X position (locked to grid)
   gridY2: number; // Ending grid Y position (locked to grid)
   lineStyle?: 'solid' | 'dashed'; // Default: solid
+  lineWidth?: number; // Stroke width in screen pixels (default: 2)
   startEndpointStyle?: 'dot' | 'arrow' | 'none'; // Default: dot
   endEndpointStyle?: 'dot' | 'arrow' | 'none'; // Default: dot
 }
@@ -67,6 +82,9 @@ export interface Continuity {
   color?: string; // For timeline visualization
   x?: number; // Timeline X position in world coordinates
   y?: number; // Timeline Y position in world coordinates
+  /** Grid units reserved at the start/end of the timeline. */
+  headGridLength?: number;
+  tailGridLength?: number;
   chapters: Chapter[];
   arcs: Arc[];
   branches: Branch[]; // Branches originating from or ending at this timeline
@@ -82,6 +100,9 @@ export interface Project {
   continuities: Continuity[];
   textboxes: Textbox[]; // Free-floating textboxes with markdown support
   lines: Line[]; // Free-floating lines with grid-locked positions
+  doubleTapSpeed?: 'faster' | 'fast' | 'slow';
+  /** Magnetize floating-object rotation near common angles (default: enabled). */
+  rotationSnapping?: boolean;
 }
 
 // Helper functions for working with these models
@@ -95,6 +116,8 @@ export function createProject(title: string): Project {
     continuities: [],
     textboxes: [],
     lines: [],
+    doubleTapSpeed: 'fast',
+    rotationSnapping: true,
   };
 }
 
@@ -105,6 +128,8 @@ export function createContinuity(name: string): Continuity {
     chapters: [],
     arcs: [],
     branches: [],
+    headGridLength: 1,
+    tailGridLength: 1,
   };
 }
 
@@ -183,6 +208,7 @@ export function createBranch(
     endContinuityId,
     endPosition,
     lineStyle: 'solid',
+    lineWidth: 3,
     startEndpointStyle: 'none',
     endEndpointStyle: 'arrow',
   };
@@ -192,7 +218,7 @@ export function createTextbox(
   x: number,
   y: number,
   width: number = 100,
-  height: number = 60,
+  height: number = 80,
   fontSize: number = 14
 ): Textbox {
   return {
@@ -208,6 +234,24 @@ export function createTextbox(
   };
 }
 
+export function createShape(x: number, y: number, shapeType: Textbox['shapeType'] = 'square'): Textbox {
+  return {
+    ...createTextbox(x, y, 120, 120, 14),
+    content: 'New shape',
+    shapeType,
+    alignX: 'center',
+    alignY: 'middle',
+    shapeFillColor: 'rgba(102, 126, 234, 0.15)',
+    shapeOutlineColor: 'rgba(102, 126, 234, 1)',
+    shapeOutlineWidth: 2,
+    rotation: 0,
+  };
+}
+
+export function createImage(x: number, y: number, dataUrl: string, width: number, height: number, alt = ''): Textbox {
+  return { ...createTextbox(x, y, width, height, 14), content: '', imageDataUrl: dataUrl, alt, alignX: 'center', alignY: 'middle' };
+}
+
 export function createLine(
   gridX1: number,
   gridY1: number,
@@ -221,6 +265,7 @@ export function createLine(
     gridX2,
     gridY2,
     lineStyle: 'solid',
+    lineWidth: 2,
     startEndpointStyle: 'none',
     endEndpointStyle: 'none',
   };

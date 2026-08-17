@@ -1,4 +1,5 @@
 import { Project } from './types';
+import { migrateProject } from './projectMigration';
 
 /**
  * File system operations for .cty (continuity) files
@@ -65,12 +66,12 @@ export class ContinuityFileManager {
    * Load changelog markdown for a specific version
    * Falls back to changelog_fallback if version-specific file doesn't exist
    */
-  static async loadChangelog(): Promise<string> {
+  static async loadChangelog(version?: string): Promise<string> {
     const appInfo = await this.loadAppInfo();
-    const version = appInfo.version;
+    const requestedVersion = version ?? appInfo.version;
     
     // Convert version to filename format (e.g., "26.1.2" -> "changelog_26_1_2")
-    const changelogFilename = `changelog_${version.replace(/\./g, '_')}.md`;
+    const changelogFilename = `changelog_${requestedVersion.replace(/\./g, '_')}.md`;
     
     try {
       const response = await fetch(`/assets/changelogs/${changelogFilename}`);
@@ -78,7 +79,7 @@ export class ContinuityFileManager {
         return await response.text();
       }
     } catch (error) {
-      console.warn(`Failed to load changelog for version ${version}:`, error);
+      console.warn(`Failed to load changelog for version ${requestedVersion}:`, error);
     }
     
     // Fallback to changelog_fallback
@@ -92,6 +93,20 @@ export class ContinuityFileManager {
     }
     
     return 'Unable to load changelog.';
+  }
+
+  /** Changelogs are explicitly indexed so the fallback document is never presented as a release. */
+  static async loadChangelogVersions(): Promise<string[]> {
+    try {
+      const response = await fetch('/assets/changelogs/index.json');
+      if (response.ok) {
+        const versions = await response.json();
+        return Array.isArray(versions) ? versions.filter((version): version is string => typeof version === 'string') : [];
+      }
+    } catch (error) {
+      console.warn('Failed to load changelog index:', error);
+    }
+    return [];
   }
 
   /**
@@ -166,30 +181,7 @@ export class ContinuityFileManager {
    * Adds missing properties that didn't exist in earlier versions
    */
   static migrateProject(project: Project): void {
-    // Ensure all continuities have branches array
-    if (project.continuities && Array.isArray(project.continuities)) {
-      project.continuities.forEach((continuity: any) => {
-        if (!continuity.branches) {
-          continuity.branches = [];
-        }
-
-        // Backfill branch defaults for older files
-        continuity.branches.forEach((branch: any) => {
-          if (!branch.lineStyle) branch.lineStyle = 'solid';
-          if (!branch.startEndpointStyle) branch.startEndpointStyle = 'dot';
-          if (!branch.endEndpointStyle) branch.endEndpointStyle = 'dot';
-        });
-      });
-    }
-
-    // Backfill line defaults for older projects
-    if (project.lines && Array.isArray(project.lines)) {
-      project.lines.forEach((line: any) => {
-        if (!line.lineStyle) line.lineStyle = 'solid';
-        if (!line.startEndpointStyle) line.startEndpointStyle = 'dot';
-        if (!line.endEndpointStyle) line.endEndpointStyle = 'dot';
-      });
-    }
+    migrateProject(project);
   }
 
   /**
