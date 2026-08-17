@@ -2845,7 +2845,7 @@ export class TimelineCanvas {
     this.menuCtx.clearRect(0, 0, this.menuCanvas.width, this.menuCanvas.height);
     this.drawTextboxControls();
     // Render menu to menu canvas
-    this.menu.render(this.menuCtx, this.menuCanvas.height, this.hoveredMenuOptionId);
+    this.menu.render(this.menuCtx, this.menuCanvas.height, this.hoveredMenuOptionId, this.textSizeMultiplier);
     // Keep touch feedback on the top canvas layer, above DOM textbox overlays.
     if (this.touchHoldIndicator) {
       const progress = Math.min(1, (Date.now() - this.touchHoldIndicator.startedAt) / TOUCH_HOLD_DURATION);

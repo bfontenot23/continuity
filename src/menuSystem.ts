@@ -53,30 +53,32 @@ export class MenuSystem {
     return this.isAnimating;
   }
 
-  private getLayout(ctx?: CanvasRenderingContext2D) {
+  private getLayout(ctx?: CanvasRenderingContext2D, textSizeMultiplier: number = 1) {
     const buttonX = this.buttonPadding;
     const buttonY = (this.canvasHeight || 400) - this.buttonSize - this.buttonPadding;
+    const scaledOptionHeight = this.optionHeight * textSizeMultiplier;
+    const scaledOptionPadding = this.optionPadding * textSizeMultiplier;
     if (ctx) {
-      ctx.font = 'bold 14px sans-serif';
+      ctx.font = `bold ${14 * textSizeMultiplier}px sans-serif`;
       let maxTextWidth = 0;
       for (const option of this.options) {
         maxTextWidth = Math.max(maxTextWidth, ctx.measureText(option.label).width);
         if (option.keybind) {
-          ctx.font = '11px sans-serif';
+          ctx.font = `${11 * textSizeMultiplier}px sans-serif`;
           maxTextWidth = Math.max(maxTextWidth, ctx.measureText(option.keybind).width);
-          ctx.font = 'bold 14px sans-serif';
+          ctx.font = `bold ${14 * textSizeMultiplier}px sans-serif`;
         }
       }
-      this.cachedMenuWidth = maxTextWidth + this.optionPadding * 2 + this.menuMargin * 2;
+      this.cachedMenuWidth = Math.max(150, maxTextWidth + scaledOptionPadding * 4);
     }
     const menuWidth = this.cachedMenuWidth;
-    const menuHeight = this.options.length * this.optionHeight + this.menuMargin * 2;
+    const menuHeight = this.options.length * scaledOptionHeight + this.menuMargin * 2;
     const currentWidth = this.buttonSize + (menuWidth - this.buttonSize) * this.animationProgress;
     const currentHeight = this.buttonSize + (menuHeight - this.buttonSize) * this.animationProgress;
     const menuBottomY = buttonY + this.buttonSize;
     const menuTopY = menuBottomY - currentHeight;
     return { buttonX, buttonY, buttonSize: this.buttonSize, menuTopY, currentWidth, currentHeight,
-      optionStartY: menuTopY + this.menuMargin };
+      optionStartY: menuTopY + this.menuMargin, scaledOptionHeight, scaledOptionPadding };
   }
 
   isClickingButton(mouseX: number, mouseY: number): boolean {
@@ -85,25 +87,27 @@ export class MenuSystem {
       <= layout.buttonSize / 2;
   }
 
-  getHoveredOption(mouseX: number, mouseY: number): string | null {
+  getHoveredOption(mouseX: number, mouseY: number, textSizeMultiplier: number = 1): string | null {
     if (!this.isOpened || this.animationProgress <= 0.3 || this.canvasHeight === 0) return null;
-    const layout = this.getLayout();
+    const layout = this.getLayout(undefined, textSizeMultiplier);
     for (let index = 0; index < this.options.length; index++) {
-      const optionY = layout.optionStartY + index * this.optionHeight;
-      if (mouseX >= layout.buttonX + this.optionPadding
-        && mouseX <= layout.buttonX + layout.currentWidth - this.optionPadding
-        && mouseY >= optionY && mouseY <= optionY + this.optionHeight) return this.options[index].id;
+      const optionY = layout.optionStartY + index * layout.scaledOptionHeight;
+      if (mouseX >= layout.buttonX + layout.scaledOptionPadding
+        && mouseX <= layout.buttonX + layout.currentWidth - layout.scaledOptionPadding
+        && mouseY >= optionY && mouseY <= optionY + layout.scaledOptionHeight) return this.options[index].id;
     }
     return null;
   }
 
-  getClickedOption(mouseX: number, mouseY: number): string | null {
-    return this.isOpened && this.animationProgress > 0.3 ? this.getHoveredOption(mouseX, mouseY) : null;
+  getClickedOption(mouseX: number, mouseY: number, textSizeMultiplier: number = 1): string | null {
+    return this.isOpened && this.animationProgress > 0.3
+      ? this.getHoveredOption(mouseX, mouseY, textSizeMultiplier)
+      : null;
   }
 
-  render(ctx: CanvasRenderingContext2D, canvasHeight: number, hoveredOptionId: string | null): void {
+  render(ctx: CanvasRenderingContext2D, canvasHeight: number, hoveredOptionId: string | null, textSizeMultiplier: number = 1): void {
     this.canvasHeight = canvasHeight;
-    const layout = this.getLayout(ctx);
+    const layout = this.getLayout(ctx, textSizeMultiplier);
     const gradient = ctx.createLinearGradient(layout.buttonX, layout.menuTopY, layout.buttonX + layout.currentWidth, layout.menuTopY + layout.currentHeight);
     gradient.addColorStop(0, '#667eea');
     gradient.addColorStop(1, '#764ba2');
@@ -121,22 +125,23 @@ export class MenuSystem {
     }
 
     this.options.forEach((option, index) => {
-      const optionY = layout.optionStartY + index * this.optionHeight;
+      const optionY = layout.optionStartY + index * layout.scaledOptionHeight;
       if (hoveredOptionId === option.id) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-        this.drawRoundedRect(ctx, layout.buttonX + this.optionPadding, optionY, layout.currentWidth - this.optionPadding * 2, this.optionHeight, 6);
+        this.drawRoundedRect(ctx, layout.buttonX + layout.scaledOptionPadding, optionY, layout.currentWidth - layout.scaledOptionPadding * 2, layout.scaledOptionHeight, 6);
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)'; ctx.lineWidth = 2;
-        this.drawRoundedRectStroke(ctx, layout.buttonX + this.optionPadding, optionY, layout.currentWidth - this.optionPadding * 2, this.optionHeight, 6);
+        this.drawRoundedRectStroke(ctx, layout.buttonX + layout.scaledOptionPadding, optionY, layout.currentWidth - layout.scaledOptionPadding * 2, layout.scaledOptionHeight, 6);
       }
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       if (option.keybind) {
-        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px sans-serif';
-        ctx.fillText(option.label, layout.buttonX + layout.currentWidth / 2, optionY + this.optionHeight / 2 - 7);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; ctx.font = '11px sans-serif';
-        ctx.fillText(option.keybind, layout.buttonX + layout.currentWidth / 2, optionY + this.optionHeight / 2 + 8);
+        ctx.fillStyle = '#ffffff'; ctx.font = `bold ${14 * textSizeMultiplier}px sans-serif`;
+        ctx.fillText(option.label, layout.buttonX + layout.currentWidth / 2, optionY + layout.scaledOptionHeight / 2 - 7);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; ctx.font = `${11 * textSizeMultiplier}px sans-serif`;
+        const keybindYOffset = 8 + (textSizeMultiplier - 1) * 20;
+        ctx.fillText(option.keybind, layout.buttonX + layout.currentWidth / 2, optionY + layout.scaledOptionHeight / 2 + keybindYOffset);
       } else {
-        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px sans-serif';
-        ctx.fillText(option.label, layout.buttonX + layout.currentWidth / 2, optionY + this.optionHeight / 2);
+        ctx.fillStyle = '#ffffff'; ctx.font = `bold ${14 * textSizeMultiplier}px sans-serif`;
+        ctx.fillText(option.label, layout.buttonX + layout.currentWidth / 2, optionY + layout.scaledOptionHeight / 2);
       }
     });
   }

@@ -23,6 +23,11 @@ function getBaseTextScale(): number {
   return window.screen.width > 1800 ? 1.25 : 1.0;
 }
 
+function getCanvasTextScale(textSize: 'small' | 'normal' | 'large' = 'normal'): number {
+  const userScale = textSize === 'small' ? 0.8 : textSize === 'large' ? 1.25 : 1.0;
+  return getBaseTextScale() * userScale;
+}
+
 const stateManager = new AppStateManager();
 let currentEditSidebar: HTMLElement | null = null;
 let currentEditSidebarBackdrop: HTMLButtonElement | null = null;
@@ -226,20 +231,23 @@ function initializeApp() {
 
       const modal = UIComponents.createProjectSettingsModal(
         state.currentProject,
-        (title: string, description: string, doubleTapSpeed: 'faster' | 'fast' | 'slow', rotationSnapping: boolean) => {
+        (
+          title: string,
+          description: string,
+          doubleTapSpeed: 'faster' | 'fast' | 'slow',
+          rotationSnapping: boolean,
+          textSize: 'small' | 'normal' | 'large',
+        ) => {
           stateManager.updateProject({
             title,
             description,
             doubleTapSpeed,
             rotationSnapping,
+            textSize,
           });
-          // Update canvas text size with combined scale
           if (canvasInstance) {
-            const baseScale = getBaseTextScale();
-            const userScale = textSize === 'small' ? 0.8 : textSize === 'large' ? 1.25 : 1.0;
-            const combinedScale = baseScale * userScale;
-            canvasInstance.textSizeMultiplier = combinedScale;
-            canvasInstance.render();
+            canvasInstance.textSizeMultiplier = getCanvasTextScale(textSize);
+            canvasInstance.refresh();
           }
         }
       );
@@ -269,6 +277,7 @@ function initializeApp() {
     canvasInstance = canvas;
     canvas.setDoubleTapSpeed(currentProject.doubleTapSpeed);
     canvas.setRotationSnapping(currentProject.rotationSnapping);
+    canvas.textSizeMultiplier = getCanvasTextScale(currentProject.textSize);
     // Restore previous viewport to avoid any snapping
     if (lastViewport) {
       canvas.setViewport(lastViewport);

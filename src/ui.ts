@@ -846,7 +846,16 @@ export class UIComponents {
     return modal;
   }
 
-  static createProjectSettingsModal(project: Project, onSave: (title: string, description: string, doubleTapSpeed: 'faster' | 'fast' | 'slow', rotationSnapping: boolean) => void): HTMLElement {
+  static createProjectSettingsModal(
+    project: Project,
+    onSave: (
+      title: string,
+      description: string,
+      doubleTapSpeed: 'faster' | 'fast' | 'slow',
+      rotationSnapping: boolean,
+      textSize: 'small' | 'normal' | 'large',
+    ) => void,
+  ): HTMLElement {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
 
@@ -913,6 +922,7 @@ export class UIComponents {
     const descInput = modal.querySelector('#project-description') as HTMLTextAreaElement;
     const doubleTapInput = modal.querySelector('#double-tap-speed') as HTMLSelectElement;
     const rotationSnappingInput = modal.querySelector('#rotation-snapping') as HTMLInputElement;
+    const textSizeSelect = modal.querySelector('#text-size') as HTMLSelectElement;
     const titleError = modal.querySelector('#project-title-error') as HTMLSpanElement;
     const cancelBtn = modal.querySelector('#modal-cancel') as HTMLButtonElement;
 
@@ -935,7 +945,13 @@ export class UIComponents {
       const description = descInput.value.trim();
       const textSize = textSizeSelect.value as 'small' | 'normal' | 'large';
       closeModal();
-      onSave(title, description, doubleTapInput.value as 'faster' | 'fast' | 'slow', rotationSnappingInput.checked);
+      onSave(
+        title,
+        description,
+        doubleTapInput.value as 'faster' | 'fast' | 'slow',
+        rotationSnappingInput.checked,
+        textSize,
+      );
     });
 
     cancelBtn.addEventListener('click', closeModal);
