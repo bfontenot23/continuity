@@ -66,9 +66,14 @@ export function createAppStyles(): HTMLStyleElement {
     }
 
     .brand-title {
-      font-weight: 700;
-      font-size: 1rem;
-      letter-spacing: 0.01em;
+      display: block;
+      line-height: 0;
+    }
+
+    .brand-logo {
+      display: block;
+      width: 155px;
+      height: auto;
     }
 
     .brand-subtitle {
@@ -790,11 +795,14 @@ export function createAppStyles(): HTMLStyleElement {
     }
 
     .welcome-title {
-      font-size: 4rem;
-      color: white;
       margin-bottom: 3rem;
-      font-weight: 700;
-      letter-spacing: 2px;
+      line-height: 0;
+    }
+
+    .welcome-logo {
+      display: block;
+      width: min(560px, 82vw);
+      height: auto;
     }
 
     .welcome-actions {

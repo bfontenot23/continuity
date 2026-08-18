@@ -15,7 +15,9 @@ export class UIComponents {
       <div class="topbar-inner">
         <div class="brand">
           <div class="brand-copy">
-            <span class="brand-title">Continuity</span>
+            <span class="brand-title">
+              <img class="brand-logo" src="/assets/icons/continuity-logo.svg" alt="Continuity">
+            </span>
             <span class="brand-subtitle">Story Planner & Timeline Manager</span>
           </div>
           <button id="info-btn" class="icon-btn" title="App information" style="width: 32px; height: 32px; padding: 4px; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; margin-left: 0.5rem;">
@@ -491,7 +493,9 @@ export class UIComponents {
 
     welcome.innerHTML = `
       <div class="welcome-container">
-        <h1 class="welcome-title">Continuity</h1>
+        <h1 class="welcome-title">
+          <img class="welcome-logo" src="/assets/icons/continuity-logo.svg" alt="Continuity">
+        </h1>
         <div class="welcome-actions">
           <button id="welcome-new-btn" class="btn btn-primary btn-large">
             Create New Project
